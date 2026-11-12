@@ -1,8 +1,8 @@
 """Module 5: API Layer.
 
 FastAPI application providing the Agricultural Decision Support System endpoints,
-specifically the primary advisory endpoint: POST /api/v1/advisory, with an interactive,
-production-ready Swagger UI documentation setup.
+specifically the primary advisory endpoint: POST /api/v1/advisory, with interactive
+Swagger UI documentation, rich OpenAPI examples, and UX helpers for frontend teams.
 """
 
 import sys
@@ -25,6 +25,9 @@ from src.schemas import (
     AdvisoryMetrics,
     DecisionEvaluationResult,
     ProvinceInfo,
+    CropInfo,
+    UIHints,
+    AdvisoryStatus,
 )
 from src.config import (
     PROVINCES,
@@ -55,28 +58,24 @@ async def lifespan(app: FastAPI):
 TAGS_METADATA = [
     {
         "name": "Recomendação & RAG",
-        "description": "Endpoint principal do sistema. Integra meteorologia em tempo real (Open-Meteo), "
-                       "a linha de base climatológica da NASA POWER (2000-2024), o motor determinístico "
-                       "de decisão agronómica e síntese de linguagem natural via Google Gemini.",
+        "description": "Endpoint principal do sistema para consumo no frontend. "
+                       "Avalia as condições hídricas da província escolhida e sintetiza a recomendação técnica formal via Google Gemini.",
     },
     {
-        "name": "Decisão Heurística",
-        "description": "Avaliação técnica determinística pura dos gatilhos agroclimáticos "
-                       "(reserva radicular P25, chuva recente >= 20mm, risco de veranico) sem chamada ao LLM.",
+        "name": "Seletores de UI (Dropdowns)",
+        "description": "Endpoints desenhados especificamente para a equipa de frontend carregar províncias e culturas disponíveis sem hardcoding.",
+    },
+    {
+        "name": "Decisão Heurística (Modo Offline/Auditoria)",
+        "description": "Avaliação técnica determinística pura dos gatilhos agroclimáticos sem geração de linguagem natural.",
     },
     {
         "name": "Linha de Base NASA POWER",
-        "description": "Consulta às matrizes agroclimáticas pré-computadas de 25 anos: "
-                       "percentis mensais de humidade, curvas semanais de sementeira e testes de Mann-Kendall.",
-    },
-    {
-        "name": "Províncias & Agroecologia",
-        "description": "Informações geográficas e zonas agroecológicas das províncias suportadas "
-                       "(Huambo, Bié e Huíla).",
+        "description": "Consulta às séries históricas pré-computadas (2000-2024), percentis P25/P50/P75, curvas semanais e tendências de Mann-Kendall.",
     },
     {
         "name": "Monitorização & Sistema",
-        "description": "Verificação de integridade operacional, estado dos ficheiros e conectividade.",
+        "description": "Verificação de integridade operacional, ficheiros e conectividade da API.",
     },
 ]
 
@@ -98,21 +97,22 @@ app = FastAPI(
     description=r"""
 ## 🌽 Plataforma Agroclimática e Pipeline RAG para Pequenos Agricultores
 
-Bem-vindo à documentação interativa da API do **Sistema de Suporte à Decisão Agrícola** desenvolvido especificamente para o **Planalto Central de Angola (Huambo, Bié e Huíla)**.
+Bem-vindo à documentação da API do **Sistema de Suporte à Decisão Agrícola** para o **Planalto Central de Angola (Huambo, Bié e Huíla)**.
 
 ---
 
-### 🚀 Funcionalidades Principais:
-1. **Escolha da Província pelo Agricultor:** O agricultor seleciona a província de interesse (`Huambo`, `Bié` ou `Huíla`) e a cultura pretendida (`Milho`, `Feijão` ou `Soja`). A data é opcional (assume a data atual por defeito).
-2. **Avaliação Científica Rigorosa:** Combina 25 anos de dados diários de satélite da **NASA POWER (2000-2024)** com dados meteorológicos e previsões a 7 dias da **Open-Meteo**.
-3. **Motor Heurístico Determinístico:** Aplica limiares objetivos de reserva radicular ($P_{25}$), gatilhos de chuva recente ($\ge 20\\text{ mm}$) e deteção precoce de risco de veranico/falso início das chuvas.
-4. **Síntese RAG via Google Gemini:** Traduz as métricas complexas numa recomendação **formal, simples e informativa**, sem termos estatísticos, estruturada em:
-   * **Veredito Claro:** `FAVORÁVEL`, `AGUARDAR` ou `NÃO PLANTAR`
-   * **2 a 3 Justificações Objetivas**
-   * **Recomendação Prática de Campo** (teste do torrão na palma da mão a 5 cm)
+### 🎨 Guia Rápido para a Equipa de Frontend (UX/UI):
+1. **Dropdown de Províncias:** Consuma `GET /api/v1/provinces` para preencher o seletor com nome, altitude e zona agroecológica.
+2. **Dropdown de Culturas:** Consuma `GET /api/v1/crops` para preencher o seletor com ícones (`🌽`, `🫘`, `🌱`), profundidade e notas agronómicas.
+3. **Formulário de Consulta:** Envie `POST /api/v1/advisory` com `{ "provincia": "Huambo", "cultura": "Milho" }`. A data é opcional (o backend assume hoje).
+4. **Renderização de Resultados:**
+   * A resposta inclui um objeto **`ui_hints`** com `cor_status_hex` (`#16A34A` verde, `#D97706` amarelo, `#DC2626` vermelho), `icone` e `rotulo_status`.
+   * Mostre o **`score_confianca`** numa barra de progresso ou indicador visual circular (0–100%).
+   * Apresente as métricas fundamentais em cartões visuais (`chuva_acumulada_recente_mm`, `humidade_solo_raiz`, `previsao_7dias_mm`).
+   * Renderize o texto **`recomendacao_extensao`** com suporte a Markdown.
 
 ---
-*Para testar os endpoints, selecione um dos cenários predefinidos abaixo e clique em **Execute**.*
+*Para testar os endpoints agora, selecione um dos cenários predefinidos abaixo e clique em **Execute**.*
 """,
     version="1.0.0",
     lifespan=lifespan,
@@ -122,7 +122,7 @@ Bem-vindo à documentação interativa da API do **Sistema de Suporte à Decisã
     swagger_ui_parameters=SWAGGER_UI_PARAMETERS,
 )
 
-# Enable CORS for frontend applications
+# Enable CORS for frontend applications (React, Vite, Next.js, Flutter, etc.)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -134,7 +134,7 @@ app.add_middleware(
 
 @app.get("/", tags=["Monitorização & Sistema"])
 def root_info() -> Dict[str, Any]:
-    """Retorna informações do sistema e ligações diretas para a documentação Swagger."""
+    """Retorna metadados operacionais e hiperligações para a documentação Swagger e ReDoc."""
     return {
         "sistema": "Agricultural Decision Support System - Planalto Central de Angola",
         "versao": "1.0.0",
@@ -143,40 +143,20 @@ def root_info() -> Dict[str, Any]:
         "documentacao_redoc": "/redoc",
         "especificacao_openapi": "/openapi.json",
         "endpoints_principais": {
-            "advisory": "/api/v1/advisory",
-            "evaluate": "/api/v1/evaluate",
-            "provinces": "/api/v1/provinces",
-            "baseline": "/api/v1/baseline/{provincia}",
-            "health": "/health",
+            "advisory": "POST /api/v1/advisory",
+            "provinces": "GET /api/v1/provinces",
+            "crops": "GET /api/v1/crops",
+            "evaluate": "POST /api/v1/evaluate",
+            "baseline": "GET /api/v1/baseline/{provincia}",
+            "health": "GET /health",
         },
     }
 
 
 @app.get("/swagger", include_in_schema=False)
 def swagger_redirect():
-    """Atalho conveniente para o Swagger UI."""
+    """Atalho de redirecionamento conveniente para o Swagger UI (/docs)."""
     return RedirectResponse(url="/docs")
-
-
-@app.get("/api/v1/info", tags=["Monitorização & Sistema"])
-def api_info() -> Dict[str, Any]:
-    """Retorna metadados operacionais e resumo das capacidades da API."""
-    return {
-        "sistema": "Agricultural Decision Support System - Planalto Central de Angola",
-        "versao": "1.0.0",
-        "regiao": "Planalto Central (Huambo, Bié, Huíla)",
-        "culturas_suportadas": list(CROPS.keys()),
-        "documentacao_swagger": "/docs",
-        "documentacao_redoc": "/redoc",
-        "especificacao_openapi": "/openapi.json",
-        "endpoints": {
-            "advisory": "POST /api/v1/advisory",
-            "evaluate": "POST /api/v1/evaluate",
-            "provinces": "GET /api/v1/provinces",
-            "baseline": "GET /api/v1/baseline/{provincia}",
-            "health": "GET /health",
-        },
-    }
 
 
 @app.get("/health", tags=["Monitorização & Sistema"])
@@ -192,7 +172,13 @@ def health_check() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/v1/provinces", response_model=List[ProvinceInfo], tags=["Províncias & Agroecologia"])
+@app.get(
+    "/api/v1/provinces",
+    response_model=List[ProvinceInfo],
+    tags=["Seletores de UI (Dropdowns)"],
+    summary="Listar Províncias Disponíveis",
+    description="Retorna a lista de províncias do Planalto Central com coordenadas, altitude e zonas agroecológicas para preenchimento de dropdowns.",
+)
 def list_provinces() -> List[ProvinceInfo]:
     """Lista as províncias do Planalto Central, respetivas coordenadas e zonas agroecológicas."""
     result = []
@@ -205,14 +191,45 @@ def list_provinces() -> List[ProvinceInfo]:
                 longitude=p_data["longitude"],
                 altitude_m=p_data["elevation_m"],
                 zona_agroecologica=p_data["agroecological_zone"],
+                icone="📍",
             )
         )
     return result
 
 
-@app.get("/api/v1/baseline/{provincia}", tags=["Linha de Base NASA POWER"])
+@app.get(
+    "/api/v1/crops",
+    response_model=List[CropInfo],
+    tags=["Seletores de UI (Dropdowns)"],
+    summary="Listar Culturas Agrícolas Disponíveis",
+    description="Retorna a lista de culturas suportadas com ícones visuais, profundidade recomendada de cova e requisitos hídricos para a UI.",
+)
+def list_crops() -> List[CropInfo]:
+    """Lista as culturas suportadas no sistema para seletores de formulários no frontend."""
+    crops_list = []
+    for c_key, c_val in CROPS.items():
+        crops_list.append(
+            CropInfo(
+                id=c_val.get("id", c_key.lower()),
+                nome=c_val["name"],
+                nome_cientifico=c_val["scientific_name"],
+                icone=c_val.get("icon", "🌱"),
+                profundidade_sementeira_cm=c_val.get("soil_depth_cm", 5),
+                min_chuva_abertura_mm=c_val.get("min_rain_onset_mm", 20.0),
+                notas_agronomicas=c_val.get("notes", ""),
+            )
+        )
+    return crops_list
+
+
+@app.get(
+    "/api/v1/baseline/{provincia}",
+    tags=["Linha de Base NASA POWER"],
+    summary="Consultar Linha de Base Histórica",
+    description="Devolve matrizes históricas (2000-2024), médias mensais, percentis radiculares P25/P50/P75, curvas de sementeira e testes de Mann-Kendall.",
+)
 def get_province_baseline(provincia: str) -> Dict[str, Any]:
-    """Consulta as matrizes históricas (2000-2024), percentis mensais e tendências de Mann-Kendall."""
+    """Consulta as matrizes históricas completas (2000-2024) para uma província."""
     engine = get_baseline_engine()
     baseline = engine.load_baseline()
 
@@ -266,7 +283,13 @@ ADVISORY_EXAMPLES = {
 }
 
 
-@app.post("/api/v1/evaluate", response_model=DecisionEvaluationResult, tags=["Decisão Heurística"])
+@app.post(
+    "/api/v1/evaluate",
+    response_model=DecisionEvaluationResult,
+    tags=["Decisão Heurística (Modo Offline/Auditoria)"],
+    summary="Avaliação Agroclimática Determinística",
+    description="Executa o motor de regras heurísticas sem invocar o LLM. Ideal para modo offline, testes de baixa latência e auditoria de gatilhos.",
+)
 def evaluate_decision_only(
     payload: AdvisoryRequest = Body(..., openapi_examples=ADVISORY_EXAMPLES)
 ) -> DecisionEvaluationResult:
@@ -291,7 +314,27 @@ def evaluate_decision_only(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@app.post("/api/v1/advisory", response_model=AdvisoryResponse, tags=["Recomendação & RAG"])
+@app.post(
+    "/api/v1/advisory",
+    response_model=AdvisoryResponse,
+    tags=["Recomendação & RAG"],
+    summary="Obter Recomendação Agroclimática Completa (RAG)",
+    description="Endpoint principal consumido pelo frontend. Avalia a aptidão de sementeira e gera o parecer formal com métricas e auxílios visuais (ui_hints).",
+    responses={
+        200: {
+            "description": "Recomendação gerada com sucesso com veredito, score de confiança, métricas e texto formal.",
+        },
+        400: {
+            "description": "Erro de validação (ex: província inválida fora do Planalto Central).",
+        },
+        422: {
+            "description": "Erro nos campos enviados na requisição.",
+        },
+        500: {
+            "description": "Erro interno durante o processamento agroclimático.",
+        },
+    },
+)
 def get_agricultural_advisory(
     payload: AdvisoryRequest = Body(..., openapi_examples=ADVISORY_EXAMPLES)
 ) -> AdvisoryResponse:
@@ -337,7 +380,39 @@ def get_agricultural_advisory(
             payload.provincia, payload.cultura, eval_result
         )
 
-    # 4. Assemble final response conforming strictly to specification
+    # 4. Generate UI Hints for Frontend Engineers
+    ui_hints_map = {
+        AdvisoryStatus.FAVORAVEL: UIHints(
+            cor_status_hex="#16A34A",
+            rotulo_status="Favorável para Semear",
+            icone="✅",
+            nivel_urgencia="sucesso",
+        ),
+        AdvisoryStatus.AGUARDAR: UIHints(
+            cor_status_hex="#D97706",
+            rotulo_status="Aguardar Consolidação da Humidade",
+            icone="⏳",
+            nivel_urgencia="atencao",
+        ),
+        AdvisoryStatus.DESFAVORAVEL: UIHints(
+            cor_status_hex="#DC2626",
+            rotulo_status="Não Plantar Agora",
+            icone="⛔",
+            nivel_urgencia="alerta",
+        ),
+    }
+
+    ui_hint = ui_hints_map.get(
+        eval_result.status,
+        UIHints(
+            cor_status_hex="#D97706",
+            rotulo_status="Aguardar",
+            icone="⏳",
+            nivel_urgencia="atencao",
+        ),
+    )
+
+    # 5. Assemble final response conforming strictly to specification
     response = AdvisoryResponse(
         status=eval_result.status,
         score_confianca=eval_result.score_confianca,
@@ -351,6 +426,7 @@ def get_agricultural_advisory(
             probabilidade_sementeira_semanal=eval_result.metricas.probabilidade_sementeira_semanal,
         ),
         recomendacao_extensao=recomendacao_texto,
+        ui_hints=ui_hint,
     )
 
     return response
@@ -358,4 +434,7 @@ def get_agricultural_advisory(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    import os
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("main:app", host=host, port=port, reload=True)

@@ -118,6 +118,37 @@ def test_post_advisory_only_provincia():
     assert "irmão" not in data["recomendacao_extensao"].lower()
 
 
+def test_list_crops():
+    """Verify crop list contains Milho, Feijão, and Soja with UI icons."""
+    response = client.get("/api/v1/crops")
+    assert response.status_code == 200
+    crops = response.json()
+    names = [c["nome"] for c in crops]
+    assert "Milho" in names
+    assert "Feijão" in names
+    assert "Soja" in names
+    # Verify icons and depth are present for frontend
+    for crop in crops:
+        assert "icone" in crop
+        assert "profundidade_sementeira_cm" in crop
+        assert "min_chuva_abertura_mm" in crop
+
+
+def test_advisory_ui_hints():
+    """Verify ui_hints object is returned for frontend styling."""
+    payload = {"provincia": "Huambo", "cultura": "Milho"}
+    response = client.post("/api/v1/advisory", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "ui_hints" in data
+    hints = data["ui_hints"]
+    assert "cor_status_hex" in hints
+    assert hints["cor_status_hex"].startswith("#")
+    assert "rotulo_status" in hints
+    assert "icone" in hints
+    assert "nivel_urgencia" in hints
+
+
 def test_post_advisory_missing_provincia():
     """Verify 422 error when farmer fails to select province."""
     payload = {

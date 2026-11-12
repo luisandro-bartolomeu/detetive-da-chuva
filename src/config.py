@@ -50,17 +50,21 @@ PROVINCES: Dict[str, Dict[str, Any]] = {
 # Supported Crops and Agronomic Thresholds
 CROPS: Dict[str, Dict[str, Any]] = {
     "Milho": {
+        "id": "milho",
         "name": "Milho",
         "scientific_name": "Zea mays",
+        "icon": "🌽",
         "min_rain_onset_mm": 20.0,
         "optimal_root_moisture": 0.40,
         "critical_temp_max": 32.0,
         "soil_depth_cm": 5,
-        "notes": "Cultura base de segurança alimentar no Planalto Central.",
+        "notes": "Cultura base de segurança alimentar no Planalto Central. Exige solo húmido até 5 cm.",
     },
     "Feijão": {
+        "id": "feijao",
         "name": "Feijão",
         "scientific_name": "Phaseolus vulgaris",
+        "icon": "🫘",
         "min_rain_onset_mm": 18.0,
         "optimal_root_moisture": 0.38,
         "critical_temp_max": 30.0,
@@ -68,8 +72,10 @@ CROPS: Dict[str, Dict[str, Any]] = {
         "notes": "Muito sensível ao encharcamento prolongado e a veranicos pós-germinação.",
     },
     "Soja": {
+        "id": "soja",
         "name": "Soja",
         "scientific_name": "Glycine max",
+        "icon": "🌱",
         "min_rain_onset_mm": 22.0,
         "optimal_root_moisture": 0.42,
         "critical_temp_max": 33.0,
