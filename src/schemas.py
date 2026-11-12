@@ -1,8 +1,10 @@
 """Pydantic v2 schemas for the Agricultural Decision Support System.
 """
 
+from datetime import date
 from enum import Enum
 from typing import Optional, Dict, Any, List
+import unicodedata
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -15,7 +17,7 @@ class AdvisoryStatus(str, Enum):
 class AdvisoryRequest(BaseModel):
     provincia: str = Field(
         ...,
-        description="Nome da província de Angola (ex: Huambo, Bié, Huíla)",
+        description="Província selecionada pelo agricultor (Huambo, Bié ou Huíla)",
         examples=["Huambo"]
     )
     cultura: str = Field(
@@ -24,26 +26,40 @@ class AdvisoryRequest(BaseModel):
         examples=["Milho"]
     )
     data_consulta: str = Field(
-        ...,
-        description="Data de consulta no formato YYYY-MM-DD",
+        default_factory=lambda: date.today().isoformat(),
+        description="Data de consulta no formato YYYY-MM-DD. Se omitida, utiliza a data de hoje.",
         examples=["2026-11-12"]
     )
+
+    @field_validator("data_consulta", mode="before")
+    @classmethod
+    def set_default_data_consulta(cls, v: Any) -> str:
+        if v is None or not str(v).strip():
+            return date.today().isoformat()
+        return str(v).strip()
 
     @field_validator("provincia")
     @classmethod
     def validate_provincia(cls, v: str) -> str:
-        clean = v.strip().title()
-        # Handle variations like Bie without accent or Huila without accent
+        if not v or not str(v).strip():
+            raise ValueError("O agricultor deve selecionar a província (Huambo, Bié ou Huíla).")
+        
+        # Normalize accents for resilient matching
+        raw = v.strip()
+        normalized = unicodedata.normalize("NFKD", raw).encode("ASCII", "ignore").decode("utf-8").strip().title()
+        
         mapping = {
             "Bie": "Bié",
-            "Bié": "Bié",
             "Huambo": "Huambo",
             "Huila": "Huíla",
-            "Huíla": "Huíla",
         }
-        if clean in mapping:
-            return mapping[clean]
-        return clean
+        
+        if normalized in mapping:
+            return mapping[normalized]
+            
+        raise ValueError(
+            f"Província '{v}' não suportada. O agricultor deve escolher uma das seguintes províncias: Huambo, Bié ou Huíla."
+        )
 
     @field_validator("cultura")
     @classmethod

@@ -95,7 +95,7 @@ WEATHER_REQUEST_TIMEOUT = 8.0  # seconds
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto")  # 'gemini', 'openai', or 'auto'
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash")
 
 # Server Configuration
 SERVER_HOST = os.getenv("HOST", "0.0.0.0")

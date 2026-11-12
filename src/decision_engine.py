@@ -39,12 +39,15 @@ class DecisionEngine:
         self,
         provincia: str,
         cultura: str,
-        data_consulta: str,
+        data_consulta: Any,
         weather_data: Dict[str, Any],
     ) -> DecisionEvaluationResult:
         """Evaluates agroclimatic criteria and produces deterministic verdict and metrics."""
+        from datetime import date
+        if not data_consulta or not isinstance(data_consulta, str):
+            data_consulta = date.today().isoformat()
         try:
-            query_dt = datetime.strptime(data_consulta, "%Y-%m-%d")
+            query_dt = datetime.strptime(str(data_consulta), "%Y-%m-%d")
         except ValueError:
             query_dt = datetime.now()
 

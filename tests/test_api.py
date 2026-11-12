@@ -103,12 +103,25 @@ def test_post_advisory_bie_feijao():
     assert "metricas" in data
 
 
-def test_post_advisory_invalid_province():
-    """Verify 400 error on unsupported province."""
+def test_post_advisory_only_provincia():
+    """Verify advisory when farmer selects only the province."""
     payload = {
-        "provincia": "Cabinda",
-        "cultura": "Milho",
-        "data_consulta": "2026-11-12",
+        "provincia": "Huambo"
     }
     response = client.post("/api/v1/advisory", json=payload)
-    assert response.status_code == 400
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "metricas" in data
+    assert "recomendacao_extensao" in data
+    # Verify formal tone (no 'irmão')
+    assert "irmão" not in data["recomendacao_extensao"].lower()
+
+
+def test_post_advisory_missing_provincia():
+    """Verify 422 error when farmer fails to select province."""
+    payload = {
+        "data_consulta": "2026-11-12"
+    }
+    response = client.post("/api/v1/advisory", json=payload)
+    assert response.status_code == 422
