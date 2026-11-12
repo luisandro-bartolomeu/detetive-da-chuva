@@ -193,7 +193,9 @@ def evaluate_decision_only(payload: AdvisoryRequest) -> DecisionEvaluationResult
     decision_engine = get_decision_engine()
 
     try:
-        weather_data = weather_svc.fetch_weather(payload.provincia, payload.data_consulta)
+        weather_data = weather_svc.fetch_weather(
+            payload.provincia, payload.data_consulta, payload.municipio
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -221,9 +223,11 @@ def get_agricultural_advisory(payload: AdvisoryRequest) -> AdvisoryResponse:
     decision_engine = get_decision_engine()
     rag_svc = get_rag_service()
 
-    # 1. Fetch real-time weather with baseline fallback
+    # 1. Fetch weather with baseline fallback or strategic climatology
     try:
-        weather_data = weather_svc.fetch_weather(payload.provincia, payload.data_consulta)
+        weather_data = weather_svc.fetch_weather(
+            payload.provincia, payload.data_consulta, payload.municipio
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -255,7 +259,7 @@ def get_agricultural_advisory(payload: AdvisoryRequest) -> AdvisoryResponse:
     except Exception as e:
         print(f"[!] Erro no RAG: {e}. Utilizando gerador local formal.")
         recomendacao_texto = rag_svc._generate_local_agronomist_synthesis(
-            payload.provincia, payload.cultura, eval_result
+            payload.provincia, payload.cultura, payload.data_consulta, eval_result
         )
 
     # 4. Assemble clean final response strictly matching specification

@@ -32,6 +32,11 @@ class AdvisoryRequest(BaseModel):
         description="Data de planeamento (YYYY-MM-DD). Se omitida, assume a data atual.",
         examples=["2026-11-12"]
     )
+    municipio: Optional[str] = Field(
+        default=None,
+        description="Município específico opcional da província (ex: Caála, Bailundo, Kuito, Matala, etc.)",
+        examples=["Caála"]
+    )
 
     @field_validator("data_consulta", mode="before")
     @classmethod

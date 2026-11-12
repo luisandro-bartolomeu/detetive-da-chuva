@@ -52,40 +52,83 @@ PROVINCES: Dict[str, Dict[str, Any]] = {
 }
 
 # Supported Crops and Agronomic Thresholds
-CROPS: Dict[str, Dict[str, Any]] = {
+CROP_PROFILES: Dict[str, Dict[str, Any]] = {
     "Milho": {
         "id": "milho",
         "name": "Milho",
         "scientific_name": "Zea mays",
         "icon": "🌽",
-        "min_rain_onset_mm": 20.0,
-        "optimal_root_moisture": 0.40,
+        "min_rain_3d_mm": 20.0,
+        "min_monthly_rain_mm": 110.0,
+        "root_moisture_quantile_floor": "P25",
+        "min_absolute_root_moisture": 0.35,
+        "optimal_temp_range": (18.0, 32.0),
         "critical_temp_max": 32.0,
-        "soil_depth_cm": 5,
-        "notes": "Cultura base de segurança alimentar no Planalto Central. Exige solo húmido até 5 cm.",
+        "waterlogging_limit": 0.85,
+        "sowing_depth_cm": 5,
+        "notes": "Cultura base de segurança alimentar no Planalto Central. Exige solo húmido até 5 cm e boa reserva radicular.",
     },
     "Feijão": {
         "id": "feijao",
         "name": "Feijão",
         "scientific_name": "Phaseolus vulgaris",
         "icon": "🫘",
-        "min_rain_onset_mm": 18.0,
-        "optimal_root_moisture": 0.38,
-        "critical_temp_max": 30.0,
-        "soil_depth_cm": 4,
-        "notes": "Muito sensível ao encharcamento prolongado e a veranicos pós-germinação.",
+        "min_rain_3d_mm": 15.0,
+        "min_monthly_rain_mm": 80.0,
+        "root_moisture_quantile_floor": "P25",
+        "min_absolute_root_moisture": 0.30,
+        "optimal_temp_range": (15.0, 29.0),
+        "critical_temp_max": 29.0,
+        "waterlogging_limit": 0.72,  # CRÍTICO: apodrece com facilidade em solo encharcado
+        "sowing_depth_cm": 4,
+        "notes": "Menor exigência inicial de água (15 mm), ciclo curto, mas muito vulnerável ao encharcamento (>0.72) e calor acima de 29°C.",
     },
     "Soja": {
         "id": "soja",
         "name": "Soja",
         "scientific_name": "Glycine max",
         "icon": "🌱",
-        "min_rain_onset_mm": 22.0,
-        "optimal_root_moisture": 0.42,
+        "min_rain_3d_mm": 25.0,
+        "min_monthly_rain_mm": 130.0,
+        "root_moisture_quantile_floor": "P50",
+        "min_absolute_root_moisture": 0.40,
+        "optimal_temp_range": (20.0, 30.0),
         "critical_temp_max": 33.0,
-        "soil_depth_cm": 4,
-        "notes": "Exige humidade contínua na sementeira para boa taxa de emergência.",
+        "waterlogging_limit": 0.80,
+        "sowing_depth_cm": 4,
+        "notes": "Semente oleaginosa que exige alta absorção hídrica para germinar (~50% do seu peso). Requer humidade radicular robusta (>=0.40).",
     },
+}
+
+# Alias for backwards compatibility
+CROPS: Dict[str, Dict[str, Any]] = CROP_PROFILES
+
+# Agricultural Municipalities in the Central Plateau (Huambo, Bié, Huíla)
+MUNICIPALITIES: Dict[str, Dict[str, Any]] = {
+    # Huambo
+    "huambo": {"name": "Huambo", "provincia": "Huambo", "latitude": -12.7761, "longitude": 15.7392},
+    "caala": {"name": "Caála", "provincia": "Huambo", "latitude": -12.8525, "longitude": 15.5606},
+    "bailundo": {"name": "Bailundo", "provincia": "Huambo", "latitude": -12.1936, "longitude": 15.8697},
+    "chicala-cholohanga": {"name": "Chicala-Cholohanga", "provincia": "Huambo", "latitude": -12.9833, "longitude": 16.0333},
+    "longonjo": {"name": "Longonjo", "provincia": "Huambo", "latitude": -12.9067, "longitude": 15.2533},
+    "ukuma": {"name": "Ukuma", "provincia": "Huambo", "latitude": -12.8500, "longitude": 15.0667},
+    "ekunha": {"name": "Ekunha", "provincia": "Huambo", "latitude": -12.6739, "longitude": 15.5133},
+    # Bié
+    "bie": {"name": "Bié", "provincia": "Bié", "latitude": -12.3833, "longitude": 16.9333},
+    "kuito": {"name": "Kuito", "provincia": "Bié", "latitude": -12.3833, "longitude": 16.9333},
+    "camacupa": {"name": "Camacupa", "provincia": "Bié", "latitude": -12.0167, "longitude": 17.4833},
+    "catabola": {"name": "Catabola", "provincia": "Bié", "latitude": -12.1500, "longitude": 17.2833},
+    "chinguar": {"name": "Chinguar", "provincia": "Bié", "latitude": -12.5833, "longitude": 16.3500},
+    "andulo": {"name": "Andulo", "provincia": "Bié", "latitude": -11.4833, "longitude": 16.9667},
+    "chitembo": {"name": "Chitembo", "provincia": "Bié", "latitude": -13.5167, "longitude": 16.7500},
+    # Huíla
+    "huila": {"name": "Huíla", "provincia": "Huíla", "latitude": -14.9172, "longitude": 13.5414},
+    "lubango": {"name": "Lubango", "provincia": "Huíla", "latitude": -14.9172, "longitude": 13.5414},
+    "matala": {"name": "Matala", "provincia": "Huíla", "latitude": -15.6833, "longitude": 15.0333},
+    "caconda": {"name": "Caconda", "provincia": "Huíla", "latitude": -13.7333, "longitude": 15.0667},
+    "chibia": {"name": "Chibia", "provincia": "Huíla", "latitude": -15.1833, "longitude": 13.6833},
+    "caluquembe": {"name": "Caluquembe", "provincia": "Huíla", "latitude": -13.7833, "longitude": 14.6833},
+    "quilengues": {"name": "Quilengues", "provincia": "Huíla", "latitude": -14.0833, "longitude": 14.0833},
 }
 
 # Processed Baseline File Path

@@ -19,14 +19,15 @@ Este documento foi elaborado para servir de guia completo e detalhado para **apr
 
 ## 1. Visão Geral Executiva
 
-O sistema tem como objetivo responder com precisão científica e empatia humana a uma pergunta vital para o pequeno agricultor do Planalto Central (Huambo, Bié, Huíla):
-> **"As condições atuais do solo e do tempo são seguras para lançar a semente à terra hoje?"**
+O sistema tem como objetivo responder com precisão científica e foco económico a duas perguntas fundamentais para o agricultor e cooperativas do Planalto Central (Huambo, Bié, Huíla):
+1. **Momento Operacional:** *"As condições atuais do solo e do tempo são seguras para lançar a semente à terra hoje?"*
+2. **Planeamento Estratégico e Financeiro:** *"Vale a pena comprar sementes, arar o terreno e contratar mão-de-obra para semear em determinado mês (ex: Julho de 2027 vs Novembro de 2027), ou há risco de perder o investimento?"*
 
-Para responder a isto, a arquitetura combina **quatro camadas complementares**:
-1. **Memória Histórica (25 anos da NASA POWER - 2000 a 2024):** Define o padrão normal de chuva, calor e humidade do solo da região.
-2. **Sensores em Tempo Real (Open-Meteo):** Mede o que choveu nos últimos dias e prevê os próximos 7 dias.
-3. **Motor Heurístico Agroclimático (Decision Engine):** Aplica regras agronómicas determinísticas de percentis e risco de seca.
-4. **Camada de Tradução e Síntese Humana (RAG + Gemini):** Traduz dados científicos complexos numa orientação simples, formal e prática de campo.
+Para responder a isto, a arquitetura combina **quatro camadas integradas**:
+1. **Memória Histórica (25 anos da NASA POWER - 2000 a 2024):** Define os padrões climáticos de 9.132 dias por província, percentis de água no solo e probabilidades de sementeira semana a semana (1 a 52).
+2. **Perfis Biológicos Específicos por Cultura:** Regras dedicadas para **Milho** (5 cm, 20 mm), **Feijão** (sensível ao encharcamento com teto de humidade de 0.72) e **Soja** (alta demanda hídrica inicial com piso de humidade de 0.40).
+3. **Motor Heurístico de Proteção de Recursos (Decision Engine):** Avalia deterministicamente o período consultado, acionando alertas de estiagem sazonal (Cacimbo), encharcamento ou viabilidade de safra.
+4. **Camada de Tradução e Síntese Humana (RAG + Gemini):** Traduz dados científicos complexos numa orientação formal, simples, sem jargões e orientada à proteção do investimento do produtor.
 
 ```mermaid
 flowchart TD

@@ -83,6 +83,11 @@ Carregar a lista de opções no formulário de consulta (ex: Milho, Feijão, Soj
 * `id`: Identificador da cultura.
 * `nome`: Nome da cultura para exibição no aplicativo.
 
+### Perfis das Culturas Disponíveis:
+* **🌽 Milho:** Cultura principal. Exige solo firme e boa humidade contínua. Profundidade ideal de sementeira: 5 cm.
+* **🫘 Feijão:** Ciclo mais curto. Suporta menor volume inicial de água, mas é **muito sensível ao excesso de água (encharcamento)**. Se o terreno estiver demasiado molhado, a API recomenda aguardar a drenagem para evitar que a semente apodreça. Profundidade: 3 a 4 cm.
+* **🌱 Soja:** Semente que exige elevada absorção de água para germinar. A API só aprova quando as reservas de humidade do solo estão plenamente consolidadas. Profundidade: 3 a 5 cm.
+
 ---
 
 ## 3. Consultar Orientação Agrícola (Endpoint Principal)
@@ -102,15 +107,25 @@ Chamado quando o utilizador preenche os dados e clica no botão principal de con
 | Campo | Tipo | Obrigatório | Descrição | Valor Padrão se omitido |
 |---|---|---|---|---|
 | `provincia` | `string` | **Sim** | Nome da província: `"Huambo"`, `"Bié"` ou `"Huíla"`. | — |
-| `cultura` | `string` | Não | Nome da cultura: `"Milho"`, `"Feijão"` ou `"Soja"`. | `"Milho"` |
-| `data_consulta` | `string` | Não | Data da consulta no formato `YYYY-MM-DD`. | Data de hoje |
+| `municipio` | `string` | Não | Nome do município para maior precisão geográfica (ex: `"Caála"`, `"Bailundo"`, `"Kuito"`, `"Matala"`, etc.). | Centro da província |
+| `cultura` | `string` | Não | Cultura agrícola visada: `"Milho"`, `"Feijão"` ou `"Soja"`. | `"Milho"` |
+| `data_consulta` | `string` | Não | Data da consulta no formato `YYYY-MM-DD` (pode ser a data atual ou qualquer data futura de planeamento de safra, ex: `"2027-11-15"`). | Data de hoje |
 
-#### Exemplo de Requisição:
+#### Exemplo de Requisição (Planeamento Imediato):
+```json
+{
+  "provincia": "Huambo",
+  "municipio": "Caála",
+  "cultura": "Milho"
+}
+```
+
+#### Exemplo de Requisição (Planeamento Estratégico Futuro):
 ```json
 {
   "provincia": "Huambo",
   "cultura": "Milho",
-  "data_consulta": "2026-11-12"
+  "data_consulta": "2027-11-15"
 }
 ```
 

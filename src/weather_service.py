@@ -1,18 +1,21 @@
-"""Module 2: Real-Time Weather Integration.
+"""Module 2: Real-Time & Climatological Weather Integration.
 
-Fetches real-time and near-term forecast data using Open-Meteo API for Angolan provinces,
-with past 7 days observed rainfall, current root/surface soil moisture, and next 7 days forecast.
-Includes caching and robust statistical fallback to historical climatological baseline.
+Provides weather intelligence tailored for both:
+1. Operational day-of queries (live Open-Meteo observations and 7-day forecast).
+2. Strategic crop planning queries (25-year NASA POWER climatological baseline expectations).
+Supports province-level and sub-provincial / municipal coordinates.
 """
 
 from datetime import datetime, date, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
+import unicodedata
 import time
 import requests
 
 try:
     from src.config import (
         PROVINCES,
+        MUNICIPALITIES,
         OPEN_METEO_URL,
         WEATHER_REQUEST_TIMEOUT,
     )
@@ -20,6 +23,7 @@ try:
 except ImportError:
     from config import (
         PROVINCES,
+        MUNICIPALITIES,
         OPEN_METEO_URL,
         WEATHER_REQUEST_TIMEOUT,
     )
@@ -27,25 +31,24 @@ except ImportError:
 
 
 class WeatherService:
-    """Handles real-time and forecast weather data retrieval with graceful fallback."""
+    """Handles weather data retrieval: live Open-Meteo for today, climatological baseline for future planning."""
 
     def __init__(self, timeout: float = WEATHER_REQUEST_TIMEOUT):
         self.timeout = timeout
         self.cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl_seconds = 600  # 10 minutes cache
 
-    def _get_cache_key(self, provincia: str, query_date: str) -> str:
-        return f"{provincia.lower()}_{query_date}"
+    def _get_cache_key(self, provincia: str, query_date: str, municipio: Optional[str] = None) -> str:
+        """Generates consistent cache key for province/municipality and query date."""
+        return f"{provincia.lower()}_{municipio or 'none'}_{query_date}"
 
-    def fetch_weather(self, provincia: str, query_date: str) -> Dict[str, Any]:
-        """Fetches live/forecast weather from Open-Meteo, falling back to baseline if needed."""
-        cache_key = self._get_cache_key(provincia, query_date)
-        now = time.time()
-
-        if cache_key in self.cache:
-            entry = self.cache[cache_key]
-            if now - entry["timestamp"] < self.cache_ttl_seconds:
-                return entry["data"]
+    def _resolve_coordinates(self, provincia: str, municipio: Optional[str] = None) -> Tuple[float, float, str]:
+        """Resolves lat/lon, optionally using a specific municipality in the Central Plateau."""
+        if municipio:
+            norm = unicodedata.normalize("NFKD", municipio).encode("ASCII", "ignore").decode("utf-8").strip().lower()
+            if norm in MUNICIPALITIES:
+                m_info = MUNICIPALITIES[norm]
+                return float(m_info["latitude"]), float(m_info["longitude"]), str(m_info["name"])
 
         prov_info = PROVINCES.get(provincia)
         if not prov_info:
@@ -57,20 +60,59 @@ class WeatherService:
         if not prov_info:
             raise ValueError(f"Província não suportada: {provincia}")
 
-        lat = prov_info["latitude"]
-        lon = prov_info["longitude"]
+        return float(prov_info["latitude"]), float(prov_info["longitude"]), str(prov_info["name"])
 
+    def _generate_fallback(self, provincia: str, query_date: str, error_message: str = "") -> Dict[str, Any]:
+        """Generates statistical climatological fallback metrics when Open-Meteo is unreachable."""
+        return self._generate_strategic_climatology(
+            provincia=provincia,
+            query_date=query_date,
+            place_name=provincia,
+            is_fallback=True,
+            error_msg=error_message,
+        )
+
+    def fetch_weather(
+        self,
+        provincia: str,
+        query_date: str,
+        municipio: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetches weather data: live observations if query is today, or 25-year climatological baseline for future dates."""
+        lat, lon, place_name = self._resolve_coordinates(provincia, municipio)
+        cache_key = self._get_cache_key(provincia, query_date, municipio)
+        now = time.time()
+
+        if cache_key in self.cache:
+            entry = self.cache[cache_key]
+            if now - entry["timestamp"] < self.cache_ttl_seconds:
+                return entry["data"]
+
+        today_str = date.today().isoformat()
+        is_today = (query_date == today_str)
+
+        # Strategic planning for future dates/months/years: use 25-year NASA POWER climatological baseline
+        if not is_today:
+            strat_weather = self._generate_strategic_climatology(provincia, query_date, place_name)
+            self.cache[cache_key] = {"timestamp": now, "data": strat_weather}
+            return strat_weather
+
+        # Day-of query: fetch live Open-Meteo observations as auxiliary support
         try:
             live_data = self._call_open_meteo(lat, lon, query_date)
             parsed_weather = self._parse_open_meteo_response(live_data, query_date)
             parsed_weather["is_fallback"] = False
+            parsed_weather["is_strategic_climatology"] = False
             parsed_weather["provincia"] = provincia
+            parsed_weather["municipio"] = place_name if municipio else None
             self.cache[cache_key] = {"timestamp": now, "data": parsed_weather}
             return parsed_weather
 
         except Exception as e:
             print(f"[!] Aviso: Chamada à Open-Meteo falhou ({e}). Utilizando fallback climatológico da linha de base.")
-            fallback_weather = self._generate_fallback(provincia, query_date, error_message=str(e))
+            fallback_weather = self._generate_strategic_climatology(
+                provincia, query_date, place_name, is_fallback=True, error_msg=str(e)
+            )
             self.cache[cache_key] = {"timestamp": now, "data": fallback_weather}
             return fallback_weather
 
@@ -101,7 +143,6 @@ class WeatherService:
         t_min = daily.get("temperature_2m_min", [])
 
         # Identify today's index in daily series
-        # With past_days=7, index 7 is usually today
         today_str = query_date
         today_idx = 7
         if today_str in dates:
@@ -115,10 +156,9 @@ class WeatherService:
 
         rain_past_3d = sum([p for p in precip[past_start_3d:today_idx] if p is not None])
         rain_past_5d = sum([p for p in precip[past_start_5d:today_idx] if p is not None])
-        # Choose the representative recent accumulation (max of 3d and 5d to capture recent trigger)
         rain_recent = max(rain_past_3d, rain_past_5d)
 
-        # Imminent rain (next 48h, i.e. today + tomorrow)
+        # Imminent rain (next 48h)
         imminent_end = min(len(precip), today_idx + 2)
         rain_imminent_48h = sum([p for p in precip[today_idx:imminent_end] if p is not None])
 
@@ -134,15 +174,13 @@ class WeatherService:
         min_temp_7d = min(forecast_tmin_slice) if forecast_tmin_slice else 15.0
         avg_temp_7d = (max_temp_7d + min_temp_7d) / 2.0
 
-        # Current Soil Moisture from hourly readings (use recent valid values)
+        # Soil Moisture from hourly readings
         sm_0_7_list = [x for x in hourly.get("soil_moisture_0_to_7cm", []) if x is not None]
         sm_7_28_list = [x for x in hourly.get("soil_moisture_7_to_28cm", []) if x is not None]
         sm_28_100_list = [x for x in hourly.get("soil_moisture_28_to_100cm", []) if x is not None]
 
-        # Use latest available reading (or average of the last 6 hours)
         surface_moisture = float(sum(sm_0_7_list[-6:]) / len(sm_0_7_list[-6:])) if sm_0_7_list else 0.45
 
-        # Root zone moisture: Open-Meteo 7-28 cm and 28-100 cm combined
         if sm_7_28_list and sm_28_100_list:
             root_7_28 = sum(sm_7_28_list[-6:]) / len(sm_7_28_list[-6:])
             root_28_100 = sum(sm_28_100_list[-6:]) / len(sm_28_100_list[-6:])
@@ -167,48 +205,58 @@ class WeatherService:
             "chuva_diaria_previsao": forecast_precip_slice,
         }
 
-    def _generate_fallback(self, provincia: str, query_date: str, error_message: str = "") -> Dict[str, Any]:
-        """Generates statistical climatological fallback metrics when Open-Meteo is unreachable."""
+    def _generate_strategic_climatology(
+        self,
+        provincia: str,
+        query_date: str,
+        place_name: str,
+        is_fallback: bool = False,
+        error_msg: str = "",
+    ) -> Dict[str, Any]:
+        """Generates statistical climatological expectations based on 25 years of NASA POWER data."""
         try:
             target_dt = datetime.strptime(query_date, "%Y-%m-%d")
         except ValueError:
             target_dt = datetime.now()
 
         month = target_dt.month
-        week = target_dt.isocalendar()[1]
+        week = min(max(target_dt.isocalendar()[1], 1), 52)
 
         engine = get_baseline_engine()
         m_stats = engine.get_province_month_stats(provincia, month)
         w_stats = engine.get_province_week_stats(provincia, week)
 
-        # Baseline climatological estimation
-        avg_monthly_rain = m_stats.get("chuva_media_mensal_mm", 150.0)
+        avg_monthly_rain = float(m_stats.get("chuva_media_mensal_mm", 150.0))
         daily_rain_rate = avg_monthly_rain / 30.0
 
-        # Estimate typical 3-day and 7-day rainfall for that month
         rain_recent = round(daily_rain_rate * 3.5, 1)
+        rain_3d = round(daily_rain_rate * 3.0, 1)
+        rain_5d = round(daily_rain_rate * 5.0, 1)
         rain_48h = round(daily_rain_rate * 2.0, 1)
         rain_7d = round(daily_rain_rate * 7.0, 1)
 
-        root_moisture = m_stats.get("gwetroot_p50", 0.45)
-        surface_moisture = m_stats.get("gwettop_media", 0.48)
-        t_max = m_stats.get("temperatura_max_c", 26.5)
-        t_min = m_stats.get("temperatura_min_c", 15.5)
+        root_moisture = float(m_stats.get("gwetroot_p50", 0.45))
+        surface_moisture = float(m_stats.get("gwettop_media", 0.48))
+        t_max = float(m_stats.get("temperatura_max_c", 26.5))
+        t_min = float(m_stats.get("temperatura_min_c", 15.5))
+        t_mean = float(m_stats.get("temperatura_media_c", 20.5))
 
         return {
             "chuva_acumulada_recente_mm": rain_recent,
-            "chuva_acumulada_3d_mm": round(daily_rain_rate * 3.0, 1),
-            "chuva_acumulada_5d_mm": round(daily_rain_rate * 5.0, 1),
+            "chuva_acumulada_3d_mm": rain_3d,
+            "chuva_acumulada_5d_mm": rain_5d,
             "chuva_iminente_48h_mm": rain_48h,
             "previsao_7dias_mm": rain_7d,
             "temperatura_max_7d_c": t_max,
             "temperatura_min_7d_c": t_min,
-            "temperatura_media_7d_c": round((t_max + t_min) / 2.0, 1),
+            "temperatura_media_7d_c": t_mean,
             "humidade_solo_superficie": surface_moisture,
             "humidade_solo_raiz": root_moisture,
-            "is_fallback": True,
-            "fallback_reason": f"Open-Meteo indisponível: {error_message}",
+            "is_fallback": is_fallback,
+            "is_strategic_climatology": True,
             "provincia": provincia,
+            "municipio": place_name,
+            "fallback_reason": error_msg if is_fallback else None,
         }
 
 
