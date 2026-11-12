@@ -7,6 +7,8 @@ services:
     buildCommand: pip install -r requirements.txt && python -c "from src.baseline_engine import BaselineEngine; BaselineEngine().load_baseline()"
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: ENVIRONMENT
+        value: production
       - key: GEMINI_API_KEY
         sync: false
       - key: LLM_MODEL

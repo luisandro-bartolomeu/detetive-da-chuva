@@ -166,10 +166,6 @@ class DecisionEngine:
             chuva_acumulada_recente_mm=round(rain_recent, 1),
             humidade_solo_raiz=round(root_moisture, 3),
             previsao_7dias_mm=round(rain_7d, 1),
-            humidade_solo_superficie=round(surface_moisture, 3),
-            temperatura_max_prevista_c=round(t_max_7d, 1),
-            p25_historico_raiz=round(p25_root, 3),
-            probabilidade_sementeira_semanal=round(prob_sementeira_semanal, 1),
         )
 
         return DecisionEvaluationResult(
@@ -185,10 +181,14 @@ class DecisionEngine:
                 "data_consulta": data_consulta,
                 "mes": month,
                 "semana_iso": week,
+                "p25_root": p25_root,
                 "p50_raiz_historico": p50_root,
                 "p75_raiz_historico": p75_root,
+                "prob_sementeira_semanal": prob_sementeira_semanal,
                 "chuva_media_mensal_mm": month_stats.get("chuva_media_mensal_mm", 0.0),
                 "temperatura_media_c": month_stats.get("temperatura_media_c", 20.0),
+                "temperatura_max_c": t_max_7d,
+                "surface_moisture": surface_moisture,
             },
         )
 

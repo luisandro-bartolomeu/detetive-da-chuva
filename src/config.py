@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Environment mode (production disables Swagger / OpenAPI / ReDoc)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+IS_PRODUCTION = ENVIRONMENT in ["production", "prod"]
+
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -98,7 +102,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_REQUEST_TIMEOUT = 8.0  # seconds
 
 # LLM Configuration
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto")  # 'gemini', 'openai', or 'auto'
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash")

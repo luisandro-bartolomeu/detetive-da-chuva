@@ -134,19 +134,35 @@ def test_list_crops():
         assert "min_chuva_abertura_mm" in crop
 
 
-def test_advisory_ui_hints():
-    """Verify ui_hints object is returned for frontend styling."""
+def test_advisory_payload_cleanliness():
+    """Verify backend returns clean payload without frontend UI logic."""
     payload = {"provincia": "Huambo", "cultura": "Milho"}
     response = client.post("/api/v1/advisory", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert "ui_hints" in data
-    hints = data["ui_hints"]
-    assert "cor_status_hex" in hints
-    assert hints["cor_status_hex"].startswith("#")
-    assert "rotulo_status" in hints
-    assert "icone" in hints
-    assert "nivel_urgencia" in hints
+    assert "status" in data
+    assert "score_confianca" in data
+    assert "metricas" in data
+    assert "recomendacao_extensao" in data
+    # Must not contain frontend UI hints in pure backend payload
+    assert "ui_hints" not in data
+
+
+def test_swagger_disabled_in_production(monkeypatch):
+    """Verify Swagger UI and OpenAPI docs are disabled in production environment."""
+    import os
+    import importlib
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    import src.config
+    import main
+    importlib.reload(src.config)
+    importlib.reload(main)
+
+    prod_client = TestClient(main.app)
+    # Must return 404 in production
+    assert prod_client.get("/docs").status_code == 404
+    assert prod_client.get("/redoc").status_code == 404
+    assert prod_client.get("/openapi.json").status_code == 404
 
 
 def test_post_advisory_missing_provincia():
