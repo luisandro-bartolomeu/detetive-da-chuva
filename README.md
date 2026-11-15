@@ -1,359 +1,102 @@
-# 🌽 Sistema de Suporte à Decisão Agrícola (Backend & RAG Pipeline)
-### Planalto Central de Angola (Huambo, Bié e Huíla)
+# Detetive da Chuva — Agroclimatic Decision Support System (Backend)
 
-Backend analítico e pipeline RAG (Retrieval-Augmented Generation) desenvolvido para apoiar agricultores familiares e extensionistas rurais no Planalto Central de Angola a determinar o momento ideal para a sementeira de culturas alimentares (**milho**, **feijão** e **soja**).
+### Central Plateau of Angola (Huambo, Bié, and Huíla)
 
-O sistema cruza **25 anos de observações diárias de satélite da NASA POWER (2000–2024)** com dados meteorológicos e previsões em tempo real da **Open-Meteo**, aplicando regras agroclimáticas determinísticas e sintetizando orientações formais, simples e sem jargões através do **Google Gemini**.
+> **Independent Hackathon Project (NASA Space Apps Challenge).** This platform is **not an official NASA service** and does not use, contain, or modify any NASA logos, flags, or mission identifiers.
 
----
-
-## 📑 Índice
-1. [Guia de Endpoints para a Equipa de Frontend](#1-guia-de-endpoints-para-a-equipa-de-frontend)
-   - [`POST /api/v1/advisory` (Endpoint Principal de Recomendação)](#a-post-apiv1advisory)
-   - [`GET /api/v1/provinces` (Listar Províncias para Dropdown)](#b-get-apiv1provinces)
-   - [`GET /api/v1/crops` (Listar Culturas para Dropdown)](#c-get-apiv1crops)
-   - [`POST /api/v1/evaluate` (Avaliação Heurística sem LLM)](#d-post-apiv1evaluate)
-   - [`GET /api/v1/baseline/{provincia}` (Linha de Base NASA 2000-2024)](#e-get-apiv1baselineprovincia)
-   - [`GET /health` (Verificação de Saúde)](#f-get-health)
-   - [`GET /` (Informações do Sistema)](#g-get-)
-2. [Orientações de UI/UX para o Frontend](#2-orientações-de-uiux-para-o-frontend)
-3. [Segurança em Produção: Desativação do Swagger](#3-segurança-em-produção-desativação-do-swagger)
-4. [Como Hospedar em PaaS Gratuito (Render, Railway, Koyeb)](#4-como-hospedar-em-paas-gratuito)
-5. [Execução e Testes Locais](#5-execução-e-testes-locais)
+**Detetive da Chuva** is an open-source analytical backend and decision-support API built to help smallholder farmers and rural extension workers in Angola's Central Plateau decide **when it is safe to sow** and identify the **optimal planting window** for five food crops (**Maize/Milho**, **Common Bean/Feijão**, **Soybean/Soja**, **Cassava/Mandioca**, and **Rice/Arroz**), protecting households against **false starts of the rainy season** and seed loss.
 
 ---
 
-## 1. Guia de Endpoints para a Equipa de Frontend
+## NASA Open Data & Resources Used
 
-Todos os endpoints operam sobre `JSON`, suportam CORS irrestrito (`*`) e não exigem autenticação prévia nesta versão.
+The system uses NASA Earth observation and reanalysis datasets as the **core analytical foundation**:
 
----
-
-### A. `POST /api/v1/advisory`
-> **Principal:** É o endpoint central consumido pela aplicação quando o agricultor submete a consulta.
-
-#### 📥 Requisição:
-* **Método:** `POST`
-* **URL:** `/api/v1/advisory`
-* **Cabeçalho:** `Content-Type: application/json`
-
-##### Corpo da Requisição (Campos):
-| Campo | Tipo | Obrigatório | Descrição | Valor por Omissão |
-|---|---|---|---|---|
-| `provincia` | `string` | **Sim** | Província selecionada: `"Huambo"`, `"Bié"` ou `"Huíla"` (aceita sem acentos: `"Bie"`, `"Huila"`). | — |
-| `cultura` | `string` | Não | Cultura agrícola visada: `"Milho"`, `"Feijão"` ou `"Soja"`. | `"Milho"` |
-| `data_consulta` | `string` | Não | Data no formato `YYYY-MM-DD`. Se omitida, o backend assume a data de hoje. | Data atual do sistema |
-
-##### Exemplo de Requisição Mínima (Apenas escolhendo a província):
-```json
-{
-  "provincia": "Huambo"
-}
-```
-
-##### Exemplo de Requisição Completa:
-```json
-{
-  "provincia": "Huambo",
-  "cultura": "Milho",
-  "data_consulta": "2026-11-12"
-}
-```
+1. **NASA GPM IMERG V07 (2000–2024):**
+   - 25 seasonal NetCDF files (`data/IMERG_V07_2000-2024/imerg_2000.nc` … `imerg_2024.nc`) covering Angola's Central Plateau (`0.1°` spatial grid, September–February agricultural seasons).
+   - Processed via `src/extract_imerg.py` into verified historical series (`data/hist_imerg_huambo.csv`, `data/hist_imerg_bie.csv`, `data/hist_imerg_huila.csv`) powering Kaplan-Meier rainfall onset quantiles (`P50`, `P90`) and false-start risk curves with **Wilson 90% confidence intervals (IC90)** in `ciclo_diario.py v0.3.0`.
+2. **NASA POWER / MERRA-2 (2000–2024):**
+   - 25 years of daily root-zone soil wetness (`GWETROOT`) and air temperature (`T2M`) establishing monthly percentiles (`P25`/`P50`/`P75`), weekly sowing curves, and **Mann-Kendall** climate trend analysis (`src/baseline_engine.py`).
+3. **Complementary Weather & Seasonal Forecasts (Strictly Separated from NASA Climatology):**
+   - **Open-Meteo Weather API:** 16-day deterministic short/medium-range forecast (`src/weather_service.py`).
+   - **Open-Meteo Seasonal API (ECMWF SEAS5):** 6-month seasonal outlook for upcoming crop planning.
 
 ---
 
-#### 📤 Resposta:
-* **Código de Sucesso:** `200 OK`
-* **Formato:**
-```json
-{
-  "status": "AGUARDAR",
-  "score_confianca": 82,
-  "metricas": {
-    "chuva_acumulada_recente_mm": 48.2,
-    "humidade_solo_raiz": 0.341,
-    "previsao_7dias_mm": 83.4
-  },
-  "recomendacao_extensao": "**AGUARDAR: Recomenda-se aguardar antes de realizar a sementeira de Milho na província do Huambo.**\n\n### Justificações Objetivas:\n* **Reservas hídricas no solo:** A camada superficial do terreno já apresenta uma humidade satisfatória, porém a humidade em profundidade, na zona de desenvolvimento das raízes, ainda está em processo de recarga...\n\n### Recomendação Prática de Campo:\n1. Aproveite os próximos 2 a 3 dias para concluir a preparação da terra...\n2. Faça o teste do torrão na palma da mão a 5 cm de profundidade..."
-}
-```
+## AI Usage Disclosure (Code, Data, and Advisory Text)
 
-##### Descrição dos Campos da Resposta:
-* **`status`** (`string`): Veredito agronómico determinístico. Tem apenas 3 valores possíveis:
-  * `"FAVORAVEL"`: Condições favoráveis. O agricultor pode semear.
-  * `"AGUARDAR"`: Chuvas recentes insuficientes ou solo ainda em recarga. O agricultor deve preparar o terreno e esperar.
-  * `"DESFAVORAVEL"`: Período de seca ou estiagem aguda. Não semear para não perder as sementes.
-* **`score_confianca`** (`number` de 0 a 100): Grau de certeza agronómica baseado na convergência dos indicadores meteorológicos e na estabilidade histórica do mês.
-* **`metricas`** (`object`):
-  * **`chuva_acumulada_recente_mm`** (`number`): Volume de chuva registado nos últimos 3 a 5 dias (em mm).
-  * **`humidade_solo_raiz`** (`number` de 0.00 a 1.00): Nível de humidade na zona radicular (ex: `0.341` = 34.1%).
-  * **`previsao_7dias_mm`** (`number`): Volume total de chuva previsto para a próxima semana (em mm).
-* **`recomendacao_extensao`** (`string`): Texto formal em **Markdown** redigido para orientação direta do agricultor. Inclui veredito em destaque, 2 a 3 justificações e a dica prática de campo (teste do torrão).
+In strict compliance with NASA Space Apps transparency guidelines:
+
+- **Generative AI for Extension Text (`POST /api/v1/advisory`):** When an API key (`GEMINI_API_KEY` or `OPENAI_API_KEY`) is configured, `src/rag_service.py` uses **Google Gemini** (or OpenAI fallback) to synthesize formal, jargon-free agricultural guidance (`recomendacao_extensao`) in Portuguese (`pt-AO`, default) or English (`en`) strictly from pre-computed deterministic indicators. When no LLM key is set, a deterministic local template generates the guidance.
+- **100% Deterministic Scientific & Statistical Core:** Generative AI is **never** used to compute rainfall thresholds, soil moisture suitability, false-start probabilities, Wilson IC90 confidence bounds, Mann-Kendall trends, or `ciclo_diario.py v0.3.0` verdicts. Those outputs are 100% deterministic and reproducible, with engine integrity verified via SHA-256 (`b0f0ed5d336339d64e577b0a52ca6d54a1e7a919f89ffcfa1416f09bc7148feb`).
+- **AI-Assisted Development:** AI coding assistants were used to assist in drafting documentation, wrapper boilerplate, and automated test scaffolding, all reviewed, integrated, and verified by the engineering team.
+- **Machine-Readable Metadata:** The API exposes this disclosure and NASA dataset attribution directly via `GET /`, `GET /compliance`, and `GET /fontes/saude`.
 
 ---
 
-### B. `GET /api/v1/provinces`
-> Devolve a lista de províncias suportadas para preenchimento dinâmico de dropdowns no frontend.
+## Key Capabilities & Scientific Principles ("Rule of Gold")
 
-* **Método:** `GET`
-* **URL:** `/api/v1/provinces`
-* **Resposta (`200 OK`):**
-```json
-[
-  {
-    "id": "huambo",
-    "nome": "Huambo",
-    "latitude": -12.7761,
-    "longitude": 15.7392,
-    "altitude_m": 1700,
-    "zona_agroecologica": "Planalto Central Tropical de Altitude"
-  },
-  {
-    "id": "bie",
-    "nome": "Bié",
-    "latitude": -12.3833,
-    "longitude": 16.9333,
-    "altitude_m": 1650,
-    "zona_agroecologica": "Planalto Central Oriental"
-  },
-  {
-    "id": "huila",
-    "nome": "Huíla",
-    "latitude": -14.9172,
-    "longitude": 13.5414,
-    "altitude_m": 1760,
-    "zona_agroecologica": "Planalto de Humpata e Lubango"
-  }
-]
+- **False-Start Risk Protection (`ciclo_diario.py v0.3.0`):** Strict mapping of official motor codes (`FAVORAVEL_INDICATIVO` → `PLANTAR (indicativo)`, `AGUARDAR_*` → `AGUARDAR`, `SEM_BASE_FIAVEL` → `SEM CONCLUSÃO`, `FORA_DA_EPOCA` → `SEM CONCLUSÃO (fora da época)`).
+- **No False Certainty:** Historical favorable planting probabilities and false-start risks use conservative **Wilson 90% confidence interval bounds** (clamped between `5.0%` and `95.0%`), never reporting `0%` or `100%` as certainty.
+- **Strict Data Provenance Separation:** 16-day Open-Meteo deterministic forecasts, 6-month ECMWF SEAS5 outlooks, 25-year NASA GPM IMERG V07 rainfall, and NASA POWER auxiliary soil indicators are labeled separately and never mixed or misrepresented as IMERG observations.
+- **Bilingual Support:** Primary documentation and technical endpoints are documented in English, while supporting both **Portuguese (Angola, `lang="pt"` default)** and **English (`lang="en"`)** in `POST /api/v1/advisory`.
+
+---
+
+## Architecture Overview
+
+```text
+main.py                      # FastAPI application, CORS, security (/docs off in production), REST routes
+ciclo_diario.py              # Official deterministic IMERG motor v0.3.0 (SHA-256 verified, unmodified)
+src/
+├── config.py                # Provinces, municipalities, 5 crop profiles, NASA & AI compliance metadata
+├── schemas.py               # Pydantic v2 request/response contracts (incl. optional lang='pt'|'en')
+├── extract_imerg.py         # Extracts 25 NASA GPM IMERG V07 NetCDF files + POWER into verified CSVs
+├── baseline_engine.py       # 25-year NASA POWER statistics, weekly curves, Mann-Kendall trends
+├── weather_service.py       # Open-Meteo 16-day deterministic forecast + 6-month ECMWF SEAS5 outlook
+├── decision_engine.py       # Deterministic rule engine for /api/v1/evaluate & /api/v1/advisory
+├── ciclo_engine_adapter.py  # Thread-safe orchestrator for ciclo_diario.py & optimal planting windows
+└── rag_service.py           # Bilingual (PT/EN) narrative synthesis (Gemini/OpenAI + deterministic fallback)
+tests/                       # Automated pytest suite (API, baseline, decision, weather, IMERG motor)
 ```
 
 ---
 
-### C. `GET /api/v1/crops`
-> Devolve as culturas agrícolas disponíveis no sistema com metadados para seletores.
+## Complete API Reference
 
-* **Método:** `GET`
-* **URL:** `/api/v1/crops`
-* **Resposta (`200 OK`):**
-```json
-[
-  {
-    "id": "milho",
-    "nome": "Milho",
-    "nome_cientifico": "Zea mays",
-    "icone": "🌽",
-    "profundidade_sementeira_cm": 5,
-    "min_chuva_abertura_mm": 20.0,
-    "notas_agronomicas": "Cultura base de segurança alimentar no Planalto Central. Exige solo húmido até 5 cm."
-  },
-  {
-    "id": "feijao",
-    "nome": "Feijão",
-    "nome_cientifico": "Phaseolus vulgaris",
-    "icone": "🫘",
-    "profundidade_sementeira_cm": 4,
-    "min_chuva_abertura_mm": 18.0,
-    "notas_agronomicas": "Muito sensível ao encharcamento prolongado e a veranicos pós-germinação."
-  },
-  {
-    "id": "soja",
-    "nome": "Soja",
-    "nome_cientifico": "Glycine max",
-    "icone": "🌱",
-    "profundidade_sementeira_cm": 4,
-    "min_chuva_abertura_mm": 22.0,
-    "notas_agronomicas": "Exige humidade contínua na sementeira para boa taxa de emergência."
-  }
-]
-```
+For full request/response schemas, error handling, frontend UI/UX badge mapping rules, and live `curl` / `fetch` examples across all **17 endpoints**, see **[API_DOCS.md](API_DOCS.md)**.
+
+### Quick Endpoint Summary
+
+| Group | Endpoint | Purpose |
+|---|---|---|
+| **Compliance & Health** | `GET /`, `GET /health`, `GET /compliance`, `GET /fontes/saude` | Service health, SHA-256 integrity, NASA open-data attribution, AI usage disclosure |
+| **Catalog Metadata** | `GET /api/v1/provinces`, `GET /api/v1/crops` | Active provinces (`Huambo`, `Bié`, `Huíla`) & 5 crops (`Milho`, `Feijão`, `Soja`, `Mandioca`, `Arroz`) |
+| **Date-Specific Advisory** | `POST /api/v1/advisory`, `POST /api/v1/evaluate` | Deterministic evaluation + optional PT/EN RAG advisory narrative |
+| **Historical Baseline** | `GET /api/v1/baseline/{provincia}` | 25-year NASA POWER monthly percentiles, weekly curves, Mann-Kendall trends |
+| **Optimal Planting Window** | `GET /api/v1/optimal-planting`, `GET /zonas/{zona}/epoca-plantio` | Recommended crop sowing window, Wilson IC90 probability, 26-week curve & 6m outlook |
+| **IMERG Motor (Sec. 7)** | `GET /zonas`, `/decisao`, `/curva-risco`, `/falsa-partida`, `/indicadores`, `/previsao` | Official `ciclo_diario.py v0.3.0` outputs, IC90 risk curve, dry-day breakdown & 16-day forecast |
 
 ---
 
-### D. `POST /api/v1/evaluate`
-> Avaliação agronómica determinística das regras heurísticas **sem chamada a LLM**. Útil para modo rápido, testes offline ou interfaces de diagnóstico.
+## Local Setup & Running Tests
 
-* **Método:** `POST`
-* **URL:** `/api/v1/evaluate`
-* **Corpo:** O mesmo payload de `AdvisoryRequest` (`provincia`, `cultura`, `data_consulta`).
-* **Resposta (`200 OK`):**
-```json
-{
-  "status": "AGUARDAR",
-  "score_confianca": 82,
-  "triggers_ativados": [
-    "CRITICAL_ROOT_MOISTURE_DEFICIT",
-    "RECENT_RAIN_TRIGGER_SATISFIED"
-  ],
-  "justificacoes_tecnicas": [
-    "Humidade da raiz (0.34) ainda está em recarga. Chuvas fortes previstas (27.1 mm) devem ensopar o terreno em breve.",
-    "Recomenda-se preparar as covas e aguardar 2 a 3 dias para a água infiltrar adequadamente."
-  ],
-  "metricas": {
-    "chuva_acumulada_recente_mm": 48.2,
-    "humidade_solo_raiz": 0.341,
-    "previsao_7dias_mm": 83.4
-  },
-  "is_fallback_weather": false
-}
-```
-
----
-
-### E. `GET /api/v1/baseline/{provincia}`
-> Retorna a linha de base histórica completa de 25 anos da NASA POWER para a província solicitada (médias mensais, percentis de humidade P25/P50/P75, curvas semanais 1-52 e teste de Mann-Kendall).
-
-* **Método:** `GET`
-* **URL:** `/api/v1/baseline/Huambo` *(ou `Bié` / `Huíla`)*
-* **Resposta (`200 OK`):**
-```json
-{
-  "id": "huambo",
-  "nome": "Huambo",
-  "coordenadas": {
-    "latitude": -12.7761,
-    "longitude": 15.7392,
-    "altitude_m": 1700
-  },
-  "zona_agroecologica": "Planalto Central Tropical de Altitude",
-  "linha_base_mensal": {
-    "11": {
-      "month": 11,
-      "chuva_media_mensal_mm": 219.5,
-      "probabilidade_dia_chuvoso_pct": 46.1,
-      "gwetroot_p25": 0.432,
-      "gwetroot_p50": 0.48,
-      "gwetroot_p75": 0.54,
-      "temperatura_media_c": 20.5
-    }
-  },
-  "curva_sementeira_semanal": {
-    "45": {
-      "week": 45,
-      "probabilidade_sementeira_pct": 72.0,
-      "gwetroot_mediana": 0.47
-    }
-  },
-  "analise_tendencias_mann_kendall": {
-    "precipitacao_anual": { "tendencia": "no trend", "p_valor": 0.27234 },
-    "temperatura_media_anual": { "tendencia": "no trend", "p_valor": 0.29327 }
-  }
-}
-```
-
----
-
-### F. `GET /health`
-> Healthcheck do serviço e verificação de prontidão da base de dados.
-
-* **Método:** `GET`
-* **URL:** `/health`
-* **Resposta (`200 OK`):**
-```json
-{
-  "status": "healthy",
-  "baseline_ready": true,
-  "provincias_ativas": ["Huambo", "Bié", "Huíla"],
-  "culturas_ativas": ["Milho", "Feijão", "Soja"],
-  "data_servidor": "2026-11-12"
-}
-```
-
----
-
-### G. `GET /`
-> Informações operacionais e verificação do ambiente (produção vs. desenvolvimento).
-
-* **Método:** `GET`
-* **URL:** `/`
-* **Resposta (`200 OK`):**
-```json
-{
-  "sistema": "Agricultural Decision Support System - Planalto Central de Angola",
-  "versao": "1.0.0",
-  "regiao": "Planalto Central (Huambo, Bié, Huíla)",
-  "ambiente": "production",
-  "swagger_disponivel": false
-}
-```
-
----
-
-## 2. Orientações de UI/UX para o Frontend
-
-A equipa de frontend pode estruturar o ecrã com base nas seguintes convenções:
-
-### A. Cores e Badges de Veredito (`status`)
-| Valor de `status` | Cor de Destaque | Sugestão de Badge | Ícone Visual | Ação Sugerida ao Agricultor |
-|---|---|---|---|---|
-| **`FAVORAVEL`** | Verde (`#16A34A`) | Fundo `#DCFCE7`, Texto `#15803D` | ✅ | Indicar que o solo tem reserva hídrica e pode semear. |
-| **`AGUARDAR`** | Âmbar/Amarelo (`#D97706`) | Fundo `#FEF3C7`, Texto `#B45309` | ⏳ | Orientar a preparar o terreno e esperar que a terra beba mais água. |
-| **`DESFAVORAVEL`** | Vermelho (`#DC2626`) | Fundo `#FEE2E2`, Texto `#B91C1C` | ⛔ | Alertar para guardar as sementes para não perdê-las na seca. |
-
-### B. Confiança da Recomendação (`score_confianca`)
-* Exibir como uma **barra de progresso** ou **indicador circular** (0 a 100%).
-* Exemplo: `82% de Certeza Agroclimática`.
-
-### C. Apresentação das Métricas (`metricas`)
-Recomenda-se renderizar em **3 cartões horizontais ou grelha de 3 colunas**:
-1. **🌧️ Chuva Recente:** `metricas.chuva_acumulada_recente_mm` + `" mm"` *(Últimos 3-5 dias)*.
-2. **💧 Humidade da Raiz:** `(metricas.humidade_solo_raiz * 100).toFixed(0)` + `"%"` *(Água guardada no solo)*.
-3. **🌤️ Previsão (7 dias):** `metricas.previsao_7dias_mm` + `" mm"` *(Chuva prevista)*.
-
-### D. Recomendação Escrita (`recomendacao_extensao`)
-* O campo contém texto formatado em **Markdown**.
-* Utilize um parser como `react-markdown` para renderizar negritos, parágrafos e listas com boa tipografia legível em ecrãs móveis sob luz solar no campo.
-
----
-
-## 3. Segurança em Produção: Desativação do Swagger
-
-Por boas práticas de segurança, **em ambiente de produção não é permitido aceder ao Swagger UI (`/docs`), ReDoc (`/redoc`) ou à especificação aberta (`/openapi.json`)**.
-
-### Como Funciona:
-A API lê a variável de ambiente `ENVIRONMENT`:
-* Se `ENVIRONMENT=production`:
-  * `/docs` $\rightarrow$ **`404 Not Found`**
-  * `/redoc` $\rightarrow$ **`404 Not Found`**
-  * `/openapi.json` $\rightarrow$ **`404 Not Found`**
-* Se `ENVIRONMENT=development` (ou local):
-  * `/docs` $\rightarrow$ Ativo para testes e depuração de desenvolvimento.
-
----
-
-## 4. Como Hospedar em PaaS Gratuito
-
-O repositório inclui todos os ficheiros de configuração de deploy prontos:
-* **`render.yaml`** (Render.com)
-* **`Procfile`** (Railway / Heroku / Render)
-* **`Dockerfile`** (Fly.io / Koyeb / Hugging Face Spaces)
-
-### Deploy no Render.com (Web Service Gratuito):
-1. Faça push do código para o seu repositório no **GitHub**.
-2. No painel do [Render](https://render.com), clique em **New +** $\rightarrow$ **Web Service**.
-3. Conecte o repositório GitHub.
-4. Preencha as configurações:
-   * **Runtime:** `Python 3`
-   * **Build Command:** `pip install -r requirements.txt && python -c "from src.baseline_engine import BaselineEngine; BaselineEngine().load_baseline()"`
-   * **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Na secção **Environment Variables**, adicione:
-   * `ENVIRONMENT`: `production` *(desativa o Swagger automaticamente)*
-   * `GEMINI_API_KEY`: *(A sua chave do Google Gemini)*
-   * `LLM_MODEL`: `gemini-3.5-flash`
-   * `LLM_PROVIDER`: `gemini`
-6. Clique em **Create Web Service**. Em cerca de 2 minutos a API estará no ar com HTTPS gratuito.
-
----
-
-## 5. Execução e Testes Locais
-
-### 1. Iniciar o Servidor Localmente:
+### 1. Install Dependencies
 ```bash
-python run_pipeline.py
+pip install -r requirements.txt
 ```
-*(O script valida automaticamente os 3 ficheiros JSON da NASA, verifica a linha de base e inicia o servidor FastAPI na porta 8000).*
 
-### 2. Executar a Suíte de Testes Automatizados:
+### 2. Run the API Server Locally
+```bash
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+- Interactive Swagger UI (available when `ENVIRONMENT != production`): `http://127.0.0.1:8000/docs`
+- Compliance & AI disclosure JSON: `http://127.0.0.1:8000/compliance`
+
+### 3. Run the Automated Test Suite
 ```bash
 pytest -v
 ```
-*(Todos os 22 testes unitários e de integração cobrem a ingestão, os percentis, as heurísticas, o Gemini e a desativação de segurança do Swagger em produção).*
+
+### 4. Production Deployment (Render / Docker / Railway)
+Configuration files (`render.yaml`, `Procfile`, `Dockerfile`) are included. Set `ENVIRONMENT=production` in production to automatically disable `/docs`, `/redoc`, and `/openapi.json`.

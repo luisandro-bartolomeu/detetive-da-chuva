@@ -7,10 +7,10 @@ Disables Swagger / OpenAPI / ReDoc automatically when running in production (ENV
 import sys
 import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import date
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure project root is in sys.path
@@ -32,11 +32,14 @@ from src.config import (
     PROCESSED_BASELINE_PATH,
     ENVIRONMENT,
     IS_PRODUCTION,
+    IMERG_CONTRACT_FILES,
+    COMPLIANCE_METADATA,
 )
 from src.baseline_engine import get_baseline_engine
 from src.weather_service import get_weather_service
 from src.decision_engine import get_decision_engine
 from src.rag_service import get_rag_service
+from src.ciclo_engine_adapter import get_ciclo_adapter, ZONE_DISPLAY_NAMES, normalize_zone
 
 
 @asynccontextmanager
@@ -61,9 +64,15 @@ redoc_url = None if IS_PRODUCTION else "/redoc"
 openapi_url = None if IS_PRODUCTION else "/openapi.json"
 
 app = FastAPI(
-    title="Sistema de Suporte à Decisão Agrícola - Planalto Central de Angola",
-    description="Backend e RAG Pipeline para o Planalto Central de Angola (Huambo, Bié e Huíla).",
-    version="1.0.0",
+    title="Detetive da Chuva — Agricultural Decision Support API (NASA Space Apps)",
+    description=(
+        "Agroclimatic Decision Support Backend for Angola's Central Plateau (Huambo, Bié, Huíla). "
+        "Combines 25 years of NASA GPM IMERG V07 & NASA POWER (MERRA-2) data, deterministic onset & "
+        "false-start evaluation (ciclo_diario.py v0.3.0), 16-day Open-Meteo forecasts, 6-month ECMWF SEAS5 "
+        "seasonal outlook, and optional LLM narrative synthesis (Google Gemini / OpenAI). "
+        "Independent project — not an official NASA service."
+    ),
+    version="1.1.0",
     lifespan=lifespan,
     docs_url=docs_url,
     redoc_url=redoc_url,
@@ -80,23 +89,50 @@ app.add_middleware(
 )
 
 
-@app.get("/", tags=["Monitorização"])
+@app.get("/", tags=["Monitoring"])
 def root_info() -> Dict[str, Any]:
-    """Retorna estado e informações gerais da API."""
+    """Returns API status, main endpoints, NASA open data sources, and AI disclosure metadata."""
     return {
         "sistema": "Agricultural Decision Support System - Planalto Central de Angola",
-        "versao": "1.0.0",
+        "title_en": COMPLIANCE_METADATA["project_name"],
+        "versao": "1.1.0",
         "regiao": "Planalto Central (Huambo, Bié, Huíla)",
         "ambiente": ENVIRONMENT,
         "swagger_disponivel": not IS_PRODUCTION,
+        "primary_documentation_language": COMPLIANCE_METADATA["primary_documentation_language"],
+        "supported_api_languages": COMPLIANCE_METADATA["supported_api_languages"],
+        "independent_project_notice": COMPLIANCE_METADATA["independent_project_notice"],
+        "nasa_open_data": [d["dataset"] for d in COMPLIANCE_METADATA["nasa_open_data_and_resources"]],
+        "ai_usage_disclosure": COMPLIANCE_METADATA["ai_usage_disclosure"],
         "endpoints_principais": {
             "advisory": "POST /api/v1/advisory",
+            "optimal_planting": "GET /api/v1/optimal-planting?zona=huambo&cultura=Milho&epoca_agricola=2024/2025",
             "provinces": "GET /api/v1/provinces",
             "crops": "GET /api/v1/crops",
             "evaluate": "POST /api/v1/evaluate",
             "baseline": "GET /api/v1/baseline/{provincia}",
+            "zonas_motor": "GET /zonas",
+            "decisao_motor": "GET /zonas/{zona}/decisao",
+            "curva_risco": "GET /zonas/{zona}/curva-risco/{data}",
+            "falsa_partida": "GET /zonas/{zona}/falsa-partida/{data}",
+            "indicadores": "GET /zonas/{zona}/indicadores/{data}",
+            "previsao": "GET /zonas/{zona}/previsao/{data}",
+            "fontes_saude": "GET /fontes/saude",
+            "compliance": "GET /compliance",
             "health": "GET /health",
         },
+    }
+
+
+@app.get("/compliance", tags=["Monitoring"])
+def compliance_info() -> Dict[str, Any]:
+    """Returns NASA Space Apps judging compliance, NASA open-data attribution, and AI usage disclosure."""
+    sources_health = get_ciclo_adapter().get_sources_health()
+    return {
+        **COMPLIANCE_METADATA,
+        "motor_integrity": sources_health.get("motor"),
+        "baseline_ready": PROCESSED_BASELINE_PATH.exists(),
+        "imerg_zones_ready": {z: p.exists() for z, p in IMERG_CONTRACT_FILES.items()},
     }
 
 
@@ -152,8 +188,8 @@ def list_crops() -> List[CropInfo]:
                 nome=c_val["name"],
                 nome_cientifico=c_val["scientific_name"],
                 icone=c_val.get("icon", "🌱"),
-                profundidade_sementeira_cm=c_val.get("soil_depth_cm", 5),
-                min_chuva_abertura_mm=c_val.get("min_rain_onset_mm", 20.0),
+                profundidade_sementeira_cm=c_val.get("sowing_depth_cm", c_val.get("soil_depth_cm", 5)),
+                min_chuva_abertura_mm=c_val.get("min_rain_3d_mm", c_val.get("min_rain_onset_mm", 20.0)),
                 notas_agronomicas=c_val.get("notes", ""),
             )
         )
@@ -248,18 +284,19 @@ def get_agricultural_advisory(payload: AdvisoryRequest) -> AdvisoryResponse:
             detail=f"Erro durante avaliação agroclimática: {str(e)}"
         )
 
-    # 3. Knowledge synthesis via RAG into formal, objective, and informative Portuguese
+    # 3. Knowledge synthesis via RAG into formal, objective, and informative text (PT or EN)
     try:
         recomendacao_texto = rag_svc.generate_recommendation(
             provincia=payload.provincia,
             cultura=payload.cultura,
             data_consulta=payload.data_consulta,
             eval_result=eval_result,
+            lang=payload.lang,
         )
     except Exception as e:
         print(f"[!] Erro no RAG: {e}. Utilizando gerador local formal.")
         recomendacao_texto = rag_svc._generate_local_agronomist_synthesis(
-            payload.provincia, payload.cultura, payload.data_consulta, eval_result
+            payload.provincia, payload.cultura, payload.data_consulta, eval_result, lang=payload.lang
         )
 
     # 4. Assemble clean final response strictly matching specification
@@ -275,6 +312,137 @@ def get_agricultural_advisory(payload: AdvisoryRequest) -> AdvisoryResponse:
     )
 
     return response
+
+
+# =========================================================================== #
+# Motor Detetive da Chuva (ciclo_diario.py v0.3.0) - Endpoints Secção 7
+# =========================================================================== #
+
+@app.get("/zonas", tags=["Motor IMERG (Secção 7)"])
+def list_motor_zones() -> Dict[str, Any]:
+    """Lista as zonas disponíveis no motor IMERG e o estado da base histórica."""
+    adapter = get_ciclo_adapter()
+    zones = []
+    for z_id, csv_path in IMERG_CONTRACT_FILES.items():
+        zones.append({
+            "id": z_id,
+            "nome": ZONE_DISPLAY_NAMES.get(z_id, z_id.title()),
+            "historico_imerg_pronto": csv_path.exists(),
+            "ultimo_ciclo": adapter._last_runs.get(z_id),
+        })
+    return {
+        "zonas": zones,
+        "versao_motor": "0.3.0",
+        "fonte_historica": "NASA GPM IMERG V07 (2000-2024)",
+    }
+
+
+@app.get("/zonas/{zona}/decisao", tags=["Motor IMERG (Secção 7)"])
+def get_zone_decision_latest(zona: str) -> Dict[str, Any]:
+    """Ciclo mais recente do motor para a zona: mensagem_agricultor, estado_motor, grau_confianca e resposta."""
+    try:
+        return get_ciclo_adapter().get_decisao_payload(zona, data_ref=None)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/zonas/{zona}/decisao/{data_ref}", tags=["Motor IMERG (Secção 7)"])
+def get_zone_decision_by_date(zona: str, data_ref: str) -> Dict[str, Any]:
+    """Decisão do motor ciclo_diario.py para uma zona e data específica (AAAA-MM-DD)."""
+    try:
+        return get_ciclo_adapter().get_decisao_payload(zona, data_ref=data_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/zonas/{zona}/curva-risco", tags=["Motor IMERG (Secção 7)"])
+@app.get("/zonas/{zona}/curva-risco/{data_ref}", tags=["Motor IMERG (Secção 7)"])
+def get_zone_risk_curve(zona: str, data_ref: Optional[str] = None) -> Dict[str, Any]:
+    """Curva de risco de falso início com IC90 e primeira data abaixo da tolerância."""
+    try:
+        return get_ciclo_adapter().get_curva_risco_payload(zona, data_ref=data_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/zonas/{zona}/falsa-partida", tags=["Motor IMERG (Secção 7)"])
+@app.get("/zonas/{zona}/falsa-partida/{data_ref}", tags=["Motor IMERG (Secção 7)"])
+def get_zone_false_start(zona: str, data_ref: Optional[str] = None) -> Dict[str, Any]:
+    """Estado da chuva candidata, falsa partida identificada e série informativa de dias secos."""
+    try:
+        return get_ciclo_adapter().get_falsa_partida_payload(zona, data_ref=data_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/zonas/{zona}/indicadores", tags=["Motor IMERG (Secção 7)"])
+@app.get("/zonas/{zona}/indicadores/{data_ref}", tags=["Motor IMERG (Secção 7)"])
+def get_zone_indicators(zona: str, data_ref: Optional[str] = None) -> Dict[str, Any]:
+    """Indicadores complementares brutos (GWETROOT e T2M do NASA POWER; não entram na decisão do motor)."""
+    try:
+        return get_ciclo_adapter().get_indicadores_payload(zona, data_ref=data_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/zonas/{zona}/previsao", tags=["Motor IMERG (Secção 7)"])
+@app.get("/zonas/{zona}/previsao/{data_ref}", tags=["Motor IMERG (Secção 7)"])
+def get_zone_forecast(zona: str, data_ref: Optional[str] = None) -> Dict[str, Any]:
+    """Previsão meteorológica de 16 dias separada da climatologia."""
+    try:
+        return get_ciclo_adapter().get_previsao_payload(zona, data_ref=data_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@app.get("/fontes/saude", tags=["Motor IMERG (Secção 7)"])
+def get_sources_health() -> Dict[str, Any]:
+    """Integrity status of ciclo_diario.py (SHA-256), NASA/Open-Meteo data sources, and AI disclosure."""
+    health_payload = get_ciclo_adapter().get_sources_health()
+    return {
+        **health_payload,
+        "nasa_open_data": COMPLIANCE_METADATA["nasa_open_data_and_resources"],
+        "ai_usage_disclosure": COMPLIANCE_METADATA["ai_usage_disclosure"],
+        "independent_project_notice": COMPLIANCE_METADATA["independent_project_notice"],
+    }
+
+
+# =========================================================================== #
+# Nova Funcionalidade: Recomendação da Melhor Época de Plantio (Safra)
+# =========================================================================== #
+
+@app.get("/api/v1/optimal-planting", tags=["Planeamento de Safra"])
+@app.get("/zonas/{zona}/epoca-plantio", tags=["Planeamento de Safra"])
+def get_optimal_planting_window(
+    zona: Optional[str] = None,
+    provincia: Optional[str] = Query(default=None, description="Província (Huambo, Bié ou Huíla)"),
+    cultura: str = Query(default="Milho", description="Cultura (Milho, Feijão, Soja, Mandioca, Arroz)"),
+    epoca_agricola: str = Query(default="2024/2025", description="Época agrícola / Safra (ex: 2024/2025)"),
+) -> Dict[str, Any]:
+    """Identifica automaticamente a melhor época de plantio para uma cultura e ano agrícola."""
+    target_zone = zona or provincia or "huambo"
+    try:
+        return get_ciclo_adapter().compute_optimal_planting_window(
+            zona=target_zone,
+            cultura=cultura,
+            epoca_agricola=epoca_agricola,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
 
 
 if __name__ == "__main__":

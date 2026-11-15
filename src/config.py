@@ -98,6 +98,36 @@ CROP_PROFILES: Dict[str, Dict[str, Any]] = {
         "sowing_depth_cm": 4,
         "notes": "Semente oleaginosa que exige alta absorção hídrica para germinar (~50% do seu peso). Requer humidade radicular robusta (>=0.40).",
     },
+    "Mandioca": {
+        "id": "mandioca",
+        "name": "Mandioca",
+        "scientific_name": "Manihot esculenta",
+        "icon": "🥔",
+        "min_rain_3d_mm": 12.0,
+        "min_monthly_rain_mm": 70.0,
+        "root_moisture_quantile_floor": "P25",
+        "min_absolute_root_moisture": 0.25,
+        "optimal_temp_range": (20.0, 32.0),
+        "critical_temp_max": 35.0,
+        "waterlogging_limit": 0.75,
+        "sowing_depth_cm": 10,
+        "notes": "Cultura altamente resiliente a veranicos após o pegamento das manivas, mas exige solo bem drenado para evitar podridão radicular.",
+    },
+    "Arroz": {
+        "id": "arroz",
+        "name": "Arroz",
+        "scientific_name": "Oryza sativa",
+        "icon": "🌾",
+        "min_rain_3d_mm": 30.0,
+        "min_monthly_rain_mm": 160.0,
+        "root_moisture_quantile_floor": "P50",
+        "min_absolute_root_moisture": 0.45,
+        "optimal_temp_range": (20.0, 32.0),
+        "critical_temp_max": 34.0,
+        "waterlogging_limit": 0.98,
+        "sowing_depth_cm": 3,
+        "notes": "Cultura de elevada exigência hídrica. Recomenda-se sementeira apenas após a plena consolidação das chuvas e recarga do solo.",
+    },
 }
 
 # Alias for backwards compatibility
@@ -142,7 +172,19 @@ DRY_SPELL_RAIN_LIMIT = 2.0        # mm in 7 days forecast
 
 # Open-Meteo Configuration
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_SEASONAL_URL = "https://seasonal-api.open-meteo.com/v1/seasonal"
 WEATHER_REQUEST_TIMEOUT = 8.0  # seconds
+
+# Detetive da Chuva Motor (ciclo_diario.py v0.3.0) Integration Configuration
+SAIDAS_DIR = BASE_DIR / "saidas"
+CICLO_MOTOR_PATH = BASE_DIR / "ciclo_diario.py"
+CICLO_MOTOR_SHA256 = "b0f0ed5d336339d64e577b0a52ca6d54a1e7a919f89ffcfa1416f09bc7148feb"
+CICLO_ACCEPTED_VERSIONS = ("0.3.0",)
+IMERG_CONTRACT_FILES = {
+    "huambo": DATA_DIR / "hist_imerg_huambo.csv",
+    "bie": DATA_DIR / "hist_imerg_bie.csv",
+    "huila": DATA_DIR / "hist_imerg_huila.csv",
+}
 
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
@@ -153,3 +195,54 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash")
 # Server Configuration
 SERVER_HOST = os.getenv("HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("PORT", 8000))
+
+# NASA Space Apps Challenge Compliance & Transparency Metadata
+COMPLIANCE_METADATA = {
+    "project_name": "Detetive da Chuva — Agroclimatic Decision Support System",
+    "challenge_scope": "NASA Space Apps Challenge — Leveraging NASA Earth Observations for Agricultural Resilience in Angola's Central Plateau (Huambo, Bié, Huíla)",
+    "independent_project_notice": (
+        "Independent hackathon project. Not an official NASA service. "
+        "Does not use, contain, or modify any NASA logos, flags, or mission identifiers."
+    ),
+    "primary_documentation_language": "en",
+    "supported_api_languages": ["pt-AO", "en"],
+    "nasa_open_data_and_resources": [
+        {
+            "dataset": "NASA GPM IMERG V07 (2000-2024)",
+            "role": "Primary daily gridded precipitation dataset (25 NetCDF annual files extracted for Huambo, Bié, Huíla) powering onset detection and false-start risk curves.",
+            "source_url": "https://gpm.nasa.gov/data/imerg",
+        },
+        {
+            "dataset": "NASA POWER / MERRA-2 (2000-2024)",
+            "role": "25-year daily root-zone soil wetness (GWETROOT) and air temperature (T2M) baseline for crop moisture suitability and Mann-Kendall trend analysis.",
+            "source_url": "https://power.larc.nasa.gov/",
+        },
+    ],
+    "complementary_weather_sources": [
+        {
+            "dataset": "Open-Meteo Weather API",
+            "role": "16-day deterministic weather forecast (kept strictly separated from 25-year NASA climatology).",
+        },
+        {
+            "dataset": "Open-Meteo Seasonal API (ECMWF SEAS5)",
+            "role": "6-month probabilistic seasonal outlook for forward crop-season planning.",
+        },
+    ],
+    "ai_usage_disclosure": {
+        "ai_used": True,
+        "summary": (
+            "Generative AI is used optionally for natural-language advisory narrative synthesis and for "
+            "assisted software/documentation drafting. All scientific calculations and verdicts remain 100% deterministic."
+        ),
+        "code_and_data_acknowledgement": (
+            "Code and data: Generative AI models (Google Gemini / OpenAI fallback via src/rag_service.py) "
+            "optionally synthesize human-readable extension text in POST /api/v1/advisory from deterministic "
+            "metrics (with a local deterministic template fallback when no LLM API key is configured). "
+            "AI coding assistants also assisted in drafting documentation and test scaffolding reviewed by the team."
+        ),
+        "deterministic_scientific_core": (
+            "All agronomic thresholds, NASA baseline percentiles, Mann-Kendall trend tests, Wilson 90% confidence "
+            "intervals, false-start risk curves, and ciclo_diario.py v0.3.0 (SHA-256 verified) verdicts are 100% deterministic."
+        ),
+    },
+}

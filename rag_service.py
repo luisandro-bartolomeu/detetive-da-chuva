@@ -126,8 +126,27 @@ class RAGService:
 
         return "\n".join(context_lines)
 
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, lang: str = "pt") -> str:
         """Returns the formal, professional system instructions for the LLM."""
+        if lang == "en":
+            return (
+                "You are an Agronomist and Rural Extension Advisor focused on Crop Season Planning and Financial Resource Protection "
+                "for smallholder farmers and cooperatives in Angola's Central Plateau (Huambo, Bié, and Huíla). Your goal is to provide "
+                "formal, clear, actionable guidance on agronomic viability and protecting farmer investments (seeds, soil preparation, labor).\n\n"
+                "STYLE & CONDUCT GUIDELINES:\n"
+                "1. FORMAL & RESPECTFUL TONE: Communicate clearly and professionally without slang or overly colloquial terms.\n"
+                "2. NO TECHNICAL/COMPUTATIONAL JARGON: NEVER mention terms such as 'Mann-Kendall', 'SARIMA', 'p-value', 'P25', 'P50', "
+                "'GWETROOT', 'GWETTOP', 'API', 'APIs', 'Open-Meteo', 'NASA POWER', 'percentiles', 'algorithm', or 'time series'. "
+                "Explain insights using practical field language: soil moisture at root depth, recent rainfall, expected rain, temperature, and rainy vs dry season.\n"
+                "3. REQUIRED STRUCTURE:\n"
+                "   A) FIRST LINE (Bold uppercase verdict naming crop, province, and Month Year):\n"
+                "      - Favorable: '**FAVORABLE: [Month Year] presents favorable conditions for planning and sowing [Crop] in [Province] province.**'\n"
+                "      - Wait: '**WAIT: It is recommended to wait before investing in sowing [Crop] in [Province] province for [Month Year].**'\n"
+                "      - Unfavorable: '**DO NOT PLANT: [Month Year] is unfavorable for rainfed sowing of [Crop] in [Province] province.**'\n"
+                "   B) OBJECTIVE JUSTIFICATIONS (2 to 3 concise points covering root-zone soil moisture, 25-year historical context, and investment risk).\n"
+                "   C) PRACTICAL FIELD RECOMMENDATION (sowing depth & hand soil-clod test at 5 cm if favorable; seed storage / soil prep / irrigated plots if dry).\n\n"
+                "Write in clear, concise English."
+            )
         return (
             "És um Engenheiro Agrónomo e Consultor de Extensão Rural focado em Planeamento de Safra e Proteção de Recursos Financeiros "
             "para agricultores e cooperativas no Planalto Central de Angola (Huambo, Bié e Huíla). O teu objetivo é fornecer "
@@ -164,16 +183,24 @@ class RAGService:
         cultura: str,
         data_consulta: str,
         eval_result: DecisionEvaluationResult,
+        lang: str = "pt",
     ) -> str:
         """Synthesizes the natural language agricultural advisory using LLM or formal fallback."""
         context_block = self.build_context_block(provincia, cultura, data_consulta, eval_result)
-        system_prompt = self.get_system_prompt()
+        system_prompt = self.get_system_prompt(lang=lang)
 
-        user_content = (
-            f"Com base nas informações agroclimáticas consolidadas abaixo, elabore a recomendação formal de orientação técnica para o agricultor:\n\n"
-            f"{context_block}\n\n"
-            f"Elabore a resposta mantendo rigorosamente a estrutura solicitada, o tom formal e informativo, e sem qualquer jargão técnico."
-        )
+        if lang == "en":
+            user_content = (
+                f"Based on the consolidated agroclimatic summary below, write the formal agricultural extension advisory for the farmer in English:\n\n"
+                f"{context_block}\n\n"
+                f"Follow the requested structure strictly, maintain a formal informative tone, and avoid any technical jargon."
+            )
+        else:
+            user_content = (
+                f"Com base nas informações agroclimáticas consolidadas abaixo, elabore a recomendação formal de orientação técnica para o agricultor:\n\n"
+                f"{context_block}\n\n"
+                f"Elabore a resposta mantendo rigorosamente a estrutura solicitada, o tom formal e informativo, e sem qualquer jargão técnico."
+            )
 
         if self.gemini_client:
             models_to_try = [
@@ -211,7 +238,7 @@ class RAGService:
             except Exception as e:
                 print(f"[!] Erro na chamada à OpenAI ({e}). Utilizando sintetizador formal local...")
 
-        return self._generate_local_agronomist_synthesis(provincia, cultura, data_consulta, eval_result)
+        return self._generate_local_agronomist_synthesis(provincia, cultura, data_consulta, eval_result, lang=lang)
 
     def _generate_local_agronomist_synthesis(
         self,
@@ -219,8 +246,9 @@ class RAGService:
         cultura: str,
         data_consulta: str,
         eval_result: DecisionEvaluationResult,
+        lang: str = "pt",
     ) -> str:
-        """Formal, objective, and informative agronomic synthesis in Portuguese."""
+        """Formal, objective, and informative agronomic synthesis in Portuguese or English."""
         status = eval_result.status
         m = eval_result.metricas
 
@@ -233,15 +261,55 @@ class RAGService:
             ano = target_dt.year
             mes_num = target_dt.month
 
+        crop_info = CROP_PROFILES.get(cultura, CROP_PROFILES.get("Milho", {}))
+        depth_cm = crop_info.get("sowing_depth_cm", 5)
+
+        if lang == "en":
+            months_en = [
+                "", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ]
+            month_name_en = months_en[mes_num] if 1 <= mes_num <= 12 else "November"
+            period_en = f"{month_name_en} {ano}"
+            if status == AdvisoryStatus.FAVORAVEL:
+                return (
+                    f"**FAVORABLE: {period_en} presents favorable conditions for planning and sowing {cultura} in {provincia} province.**\n\n"
+                    f"Historical climate records and projected conditions support safe agricultural investment:\n\n"
+                    f"1. **Adequate soil water availability:** Root-zone soil moisture ({m.humidade_solo_raiz:.2f}) and expected weekly rainfall "
+                    f"({m.previsao_7dias_mm:.1f} mm) satisfy germination and early establishment needs for {cultura}.\n"
+                    f"2. **Historical season stability:** 25-year regional records confirm this period falls within the regular rainy season, "
+                    f"reducing the risk of severe dry-spell losses.\n"
+                    f"3. **Investment protection:** Financial risk of seed loss from early drought is low, supporting field operations.\n\n"
+                    f"**Practical field recommendation:** Sow at {depth_cm} cm depth. Before planting, test soil moisture by hand at 5 cm depth: "
+                    f"pressed soil should hold a firm clod without crumbling or dripping excess water."
+                )
+            if status == AdvisoryStatus.AGUARDAR:
+                return (
+                    f"**WAIT: It is recommended to wait before investing in sowing {cultura} in {provincia} province for {period_en}.**\n\n"
+                    f"Despite initial moisture signals, water reserves still require consolidation to protect farmer investments:\n\n"
+                    f"1. **Moisture still building:** Root-zone soil moisture ({m.humidade_solo_raiz:.2f}) or rainfall regularity does not yet "
+                    f"provide a reliable safety margin for {cultura}.\n"
+                    f"2. **Replanting protection:** Sowing prematurely could cause costly replanting if a dry spell follows germination.\n\n"
+                    f"**Practical field recommendation:** Use this window to complete land preparation, plowing, and ridge alignment. "
+                    f"Keep seeds safely stored until steady rainfall saturates the planting layer."
+                )
+            return (
+                f"**DO NOT PLANT: {period_en} is unfavorable for rainfed sowing of {cultura} in {provincia} province.**\n\n"
+                f"Agroclimatic indicators show critical drought risk and high likelihood of crop failure:\n\n"
+                f"1. **Severe water deficit (Dry Season):** Soil moisture ({m.humidade_solo_raiz:.2f}) and expected rainfall "
+                f"({m.previsao_7dias_mm:.1f} mm) fall critically below biological requirements for {cultura}.\n"
+                f"2. **Financial protection alert:** Rainfed sowing during this period risks desiccation and total loss of expenditure "
+                f"on seeds, fertilizer, and labor.\n\n"
+                f"**Practical field recommendation:** Preserve seeds and financial resources for the start of regular rains (October/November). "
+                f"Focus dry-season work on liming, organic matter incorporation, fallow maintenance, or irrigated plots."
+            )
+
         meses_pt = [
             "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
         ]
         mes_nome_pt = meses_pt[mes_num] if 1 <= mes_num <= 12 else "Novembro"
         periodo_str = f"{mes_nome_pt} de {ano}"
-
-        crop_info = CROP_PROFILES.get(cultura, CROP_PROFILES.get("Milho", {}))
-        depth_cm = crop_info.get("sowing_depth_cm", 5)
 
         if status == AdvisoryStatus.FAVORAVEL:
             text = (

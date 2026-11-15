@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 venv/
 *.log
+data/IMERG_V07_2000-2024/
+saidas/
+*.pdf

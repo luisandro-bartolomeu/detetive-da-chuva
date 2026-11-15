@@ -34,9 +34,26 @@ class AdvisoryRequest(BaseModel):
     )
     municipio: Optional[str] = Field(
         default=None,
-        description="Município específico opcional da província (ex: Caála, Bailundo, Kuito, Matala, etc.)",
+        description="Optional specific municipality within the province (e.g. Caála, Bailundo, Kuito, Matala)",
         examples=["Caála"]
     )
+    lang: str = Field(
+        default="pt",
+        description="Language for advisory narrative output: 'pt' (Portuguese - Angola, default) or 'en' (English)",
+        examples=["pt"]
+    )
+
+    @field_validator("lang", mode="before")
+    @classmethod
+    def normalize_lang(cls, v: Any) -> str:
+        if not v or not str(v).strip():
+            return "pt"
+        raw = str(v).strip().lower()
+        if raw.startswith("en"):
+            return "en"
+        if raw.startswith("pt"):
+            return "pt"
+        raise ValueError("Unsupported language. Use 'pt' or 'en'.")
 
     @field_validator("data_consulta", mode="before")
     @classmethod

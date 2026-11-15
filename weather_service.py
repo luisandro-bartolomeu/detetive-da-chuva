@@ -117,12 +117,12 @@ class WeatherService:
             return fallback_weather
 
     def _call_open_meteo(self, lat: float, lon: float, query_date: str) -> Dict[str, Any]:
-        """Executes HTTP request to Open-Meteo API."""
+        """Executes HTTP request to Open-Meteo API (up to 16 days forecast)."""
         params = {
             "latitude": lat,
             "longitude": lon,
             "past_days": 7,
-            "forecast_days": 7,
+            "forecast_days": 16,
             "daily": ["precipitation_sum", "temperature_2m_max", "temperature_2m_min"],
             "hourly": ["soil_moisture_0_to_7cm", "soil_moisture_7_to_28cm", "soil_moisture_28_to_100cm"],
             "timezone": "Africa/Luanda",
@@ -162,13 +162,16 @@ class WeatherService:
         imminent_end = min(len(precip), today_idx + 2)
         rain_imminent_48h = sum([p for p in precip[today_idx:imminent_end] if p is not None])
 
-        # Next 7 days forecast precipitation and temperatures
-        forecast_end = min(len(precip), today_idx + 7)
-        forecast_precip_slice = [p for p in precip[today_idx:forecast_end] if p is not None]
-        rain_forecast_7d = sum(forecast_precip_slice)
+        # Next 7 days and 16 days forecast precipitation and temperatures
+        forecast_end_7d = min(len(precip), today_idx + 7)
+        forecast_end_16d = min(len(precip), today_idx + 16)
+        forecast_precip_slice_7d = [p for p in precip[today_idx:forecast_end_7d] if p is not None]
+        forecast_precip_slice_16d = [p for p in precip[today_idx:forecast_end_16d] if p is not None]
+        rain_forecast_7d = sum(forecast_precip_slice_7d)
+        rain_forecast_16d = sum(forecast_precip_slice_16d)
 
-        forecast_tmax_slice = [t for t in t_max[today_idx:forecast_end] if t is not None]
-        forecast_tmin_slice = [t for t in t_min[today_idx:forecast_end] if t is not None]
+        forecast_tmax_slice = [t for t in t_max[today_idx:forecast_end_7d] if t is not None]
+        forecast_tmin_slice = [t for t in t_min[today_idx:forecast_end_7d] if t is not None]
 
         max_temp_7d = max(forecast_tmax_slice) if forecast_tmax_slice else 28.0
         min_temp_7d = min(forecast_tmin_slice) if forecast_tmin_slice else 15.0
@@ -196,13 +199,16 @@ class WeatherService:
             "chuva_acumulada_5d_mm": round(rain_past_5d, 1),
             "chuva_iminente_48h_mm": round(rain_imminent_48h, 1),
             "previsao_7dias_mm": round(rain_forecast_7d, 1),
+            "previsao_16dias_mm": round(rain_forecast_16d, 1),
             "temperatura_max_7d_c": round(max_temp_7d, 1),
             "temperatura_min_7d_c": round(min_temp_7d, 1),
             "temperatura_media_7d_c": round(avg_temp_7d, 1),
             "humidade_solo_superficie": round(surface_moisture, 3),
             "humidade_solo_raiz": round(root_moisture, 3),
-            "datas_previsao": dates[today_idx:forecast_end],
-            "chuva_diaria_previsao": forecast_precip_slice,
+            "datas_previsao": dates[today_idx:forecast_end_7d],
+            "chuva_diaria_previsao": forecast_precip_slice_7d,
+            "datas_previsao_16d": dates[today_idx:forecast_end_16d],
+            "chuva_diaria_previsao_16d": forecast_precip_slice_16d,
         }
 
     def _generate_strategic_climatology(
@@ -258,6 +264,77 @@ class WeatherService:
             "municipio": place_name,
             "fallback_reason": error_msg if is_fallback else None,
         }
+
+    def fetch_seasonal_outlook(self, provincia: str, municipio: Optional[str] = None) -> Dict[str, Any]:
+        """Fetches 6-month seasonal outlook from Open-Meteo Seasonal API (ECMWF SEAS5/NCEP CFS)."""
+        lat, lon, place_name = self._resolve_coordinates(provincia, municipio)
+        cache_key = f"seasonal_{provincia.lower()}_{municipio or 'none'}"
+        now = time.time()
+
+        if cache_key in self.cache and (now - self.cache[cache_key]["timestamp"] < 3600):
+            return self.cache[cache_key]["data"]
+
+        url = "https://seasonal-api.open-meteo.com/v1/seasonal"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "daily": ["precipitation_sum", "temperature_2m_mean"],
+            "models": "ecmwf_seas5",
+            "forecast_days": 180,
+            "timezone": "Africa/Luanda",
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            raw = resp.json()
+            daily = raw.get("daily", {})
+            times = daily.get("time", [])
+            # Aggregate ensemble members if present (precipitation_sum_member01, etc.) or direct key
+            precip_keys = [k for k in daily.keys() if k.startswith("precipitation_sum")]
+            temp_keys = [k for k in daily.keys() if k.startswith("temperature_2m_mean")]
+
+            monthly_agg: Dict[str, Dict[str, Any]] = {}
+            for i, dt_str in enumerate(times):
+                ym = dt_str[:7]
+                p_vals = [daily[k][i] for k in precip_keys if i < len(daily[k]) and daily[k][i] is not None]
+                t_vals = [daily[k][i] for k in temp_keys if i < len(daily[k]) and daily[k][i] is not None]
+                if ym not in monthly_agg:
+                    monthly_agg[ym] = {"precip_sum": 0.0, "temp_list": [], "days": 0}
+                if p_vals:
+                    monthly_agg[ym]["precip_sum"] += sum(p_vals) / len(p_vals)
+                if t_vals:
+                    monthly_agg[ym]["temp_list"].append(sum(t_vals) / len(t_vals))
+                monthly_agg[ym]["days"] += 1
+
+            months_out = []
+            for ym, vals in sorted(monthly_agg.items())[:6]:
+                avg_t = sum(vals["temp_list"]) / len(vals["temp_list"]) if vals["temp_list"] else None
+                months_out.append({
+                    "mes": ym,
+                    "chuva_esperada_mm": round(vals["precip_sum"], 1),
+                    "temperatura_media_c": round(avg_t, 1) if avg_t is not None else None,
+                    "dias_cobertos": vals["days"],
+                })
+
+            result = {
+                "estado": "ok",
+                "fonte": "Open-Meteo Seasonal (ECMWF SEAS5)",
+                "rotulo": "previsão sazonal (6 meses), não é climatologia nem certeza",
+                "provincia": provincia,
+                "municipio": place_name,
+                "previsao_mensal_6m": months_out,
+            }
+            self.cache[cache_key] = {"timestamp": now, "data": result}
+            return result
+        except Exception as e:
+            return {
+                "estado": "falhou",
+                "erro": str(e),
+                "fonte": "Open-Meteo Seasonal",
+                "provincia": provincia,
+                "municipio": place_name,
+                "previsao_mensal_6m": [],
+            }
 
 
 _weather_instance: Optional[WeatherService] = None
