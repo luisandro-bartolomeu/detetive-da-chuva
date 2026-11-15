@@ -1,6 +1,6 @@
-"""Adapter & Orchestrator for ciclo_diario.py (Detetive da Chuva Motor v0.3.0).
+"""Adapter & Orchestrator for ciclo_diario.py (AgroKairos Scientific Motor v0.3.0).
 
-Implements Sections 4, 5, 6, 7, 8, and 11 of the Detetive da Chuva backend specification:
+Implements Sections 4, 5, 6, 7, 8, and 11 of the AgroKairos (formerly Detetive da Chuva) backend specification:
 - Preserves ciclo_diario.py untouched on disk (exact SHA-256 verification).
 - Resolves zone aliases (huambo, bie/cuito, huila/lubango).
 - Prepares verified IMERG V07 historical CSVs and seasonal/live observed slices

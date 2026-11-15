@@ -1,4 +1,4 @@
-# Detetive da Chuva — Complete API & Frontend Integration Guide
+# AgroKairos — Complete API & Frontend Integration Guide
 
 > **Primary Language:** English (with Portuguese `pt-AO` agricultural output labels documented for Angola's Central Plateau UI).  
 > **Project Status Notice:** Independent hackathon project for the **NASA Space Apps Challenge**. **Not an official NASA service.**

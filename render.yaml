@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: agro-decision-support-angola
+    name: agrokairos-api
     env: python
     region: frankfurt
     plan: free

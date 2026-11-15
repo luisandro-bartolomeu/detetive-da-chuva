@@ -1,10 +1,10 @@
-# Detetive da Chuva — Agroclimatic Decision Support System (Backend)
+# AgroKairos — Agroclimatic Decision Support System (Backend)
 
 ### Central Plateau of Angola (Huambo, Bié, and Huíla)
 
 > **Independent Hackathon Project (NASA Space Apps Challenge).** This platform is **not an official NASA service** and does not use, contain, or modify any NASA logos, flags, or mission identifiers.
 
-**Detetive da Chuva** is an open-source analytical backend and decision-support API built to help smallholder farmers and rural extension workers in Angola's Central Plateau decide **when it is safe to sow** and identify the **optimal planting window** for five food crops (**Maize/Milho**, **Common Bean/Feijão**, **Soybean/Soja**, **Cassava/Mandioca**, and **Rice/Arroz**), protecting households against **false starts of the rainy season** and seed loss.
+**AgroKairos** is an open-source analytical backend and decision-support API built to help smallholder farmers and rural extension workers in Angola's Central Plateau decide **when it is safe to sow** and identify the **optimal planting window** for five food crops (**Maize/Milho**, **Common Bean/Feijão**, **Soybean/Soja**, **Cassava/Mandioca**, and **Rice/Arroz**), protecting households against **false starts of the rainy season** and seed loss.
 
 ---
 

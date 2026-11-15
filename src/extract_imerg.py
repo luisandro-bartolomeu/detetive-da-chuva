@@ -1,4 +1,4 @@
-"""Extractor for NASA GPM IMERG V07 NetCDF files into Detetive da Chuva contract CSVs.
+"""Extractor for NASA GPM IMERG V07 NetCDF files into AgroKairos contract CSVs.
 
 Reads the 25 seasonal NetCDF files (imerg_2000.nc to imerg_2024.nc) in data/IMERG_V07_2000-2024,
 extracts daily precipitation (mm/day) for the nearest pixel to Huambo, Bié, and Huíla,

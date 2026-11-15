@@ -64,9 +64,9 @@ redoc_url = None if IS_PRODUCTION else "/redoc"
 openapi_url = None if IS_PRODUCTION else "/openapi.json"
 
 app = FastAPI(
-    title="Detetive da Chuva — Agricultural Decision Support API (NASA Space Apps)",
+    title="AgroKairos — Agricultural Decision Support API (NASA Space Apps)",
     description=(
-        "Agroclimatic Decision Support Backend for Angola's Central Plateau (Huambo, Bié, Huíla). "
+        "AgroKairos Agroclimatic Decision Support Backend for Angola's Central Plateau (Huambo, Bié, Huíla). "
         "Combines 25 years of NASA GPM IMERG V07 & NASA POWER (MERRA-2) data, deterministic onset & "
         "false-start evaluation (ciclo_diario.py v0.3.0), 16-day Open-Meteo forecasts, 6-month ECMWF SEAS5 "
         "seasonal outlook, and optional LLM narrative synthesis (Google Gemini / OpenAI). "
@@ -89,11 +89,11 @@ app.add_middleware(
 )
 
 
-@app.get("/", tags=["Monitoring"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Monitoring"])
 def root_info() -> Dict[str, Any]:
     """Returns API status, main endpoints, NASA open data sources, and AI disclosure metadata."""
     return {
-        "sistema": "Agricultural Decision Support System - Planalto Central de Angola",
+        "sistema": "AgroKairos — Agricultural Decision Support System (Planalto Central de Angola)",
         "title_en": COMPLIANCE_METADATA["project_name"],
         "versao": "1.1.0",
         "regiao": "Planalto Central (Huambo, Bié, Huíla)",
@@ -136,7 +136,7 @@ def compliance_info() -> Dict[str, Any]:
     }
 
 
-@app.get("/health", tags=["Monitorização"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Monitoring"])
 def health_check() -> Dict[str, Any]:
     """Verifica a integridade do serviço, da linha de base NASA e das províncias."""
     baseline_exists = PROCESSED_BASELINE_PATH.exists()
@@ -315,7 +315,7 @@ def get_agricultural_advisory(payload: AdvisoryRequest) -> AdvisoryResponse:
 
 
 # =========================================================================== #
-# Motor Detetive da Chuva (ciclo_diario.py v0.3.0) - Endpoints Secção 7
+# Motor AgroKairos (ciclo_diario.py v0.3.0) - Endpoints Secção 7
 # =========================================================================== #
 
 @app.get("/zonas", tags=["Motor IMERG (Secção 7)"])

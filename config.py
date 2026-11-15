@@ -175,7 +175,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_SEASONAL_URL = "https://seasonal-api.open-meteo.com/v1/seasonal"
 WEATHER_REQUEST_TIMEOUT = 8.0  # seconds
 
-# Detetive da Chuva Motor (ciclo_diario.py v0.3.0) Integration Configuration
+# AgroKairos Scientific Motor (ciclo_diario.py v0.3.0) Integration Configuration
 SAIDAS_DIR = BASE_DIR / "saidas"
 CICLO_MOTOR_PATH = BASE_DIR / "ciclo_diario.py"
 CICLO_MOTOR_SHA256 = "b0f0ed5d336339d64e577b0a52ca6d54a1e7a919f89ffcfa1416f09bc7148feb"
@@ -198,7 +198,7 @@ SERVER_PORT = int(os.getenv("PORT", 8000))
 
 # NASA Space Apps Challenge Compliance & Transparency Metadata
 COMPLIANCE_METADATA = {
-    "project_name": "Detetive da Chuva — Agroclimatic Decision Support System",
+    "project_name": "AgroKairos — Agroclimatic Decision Support System",
     "challenge_scope": "NASA Space Apps Challenge — Leveraging NASA Earth Observations for Agricultural Resilience in Angola's Central Plateau (Huambo, Bié, Huíla)",
     "independent_project_notice": (
         "Independent hackathon project. Not an official NASA service. "
