@@ -39,7 +39,7 @@ In strict compliance with NASA Space Apps transparency guidelines:
 - **False-Start Risk Protection (`ciclo_diario.py v0.3.0`):** Strict mapping of official motor codes (`FAVORAVEL_INDICATIVO` → `PLANTAR (indicativo)`, `AGUARDAR_*` → `AGUARDAR`, `SEM_BASE_FIAVEL` → `SEM CONCLUSÃO`, `FORA_DA_EPOCA` → `SEM CONCLUSÃO (fora da época)`).
 - **No False Certainty:** Historical favorable planting probabilities and false-start risks use conservative **Wilson 90% confidence interval bounds** (clamped between `5.0%` and `95.0%`), never reporting `0%` or `100%` as certainty.
 - **Strict Data Provenance Separation:** 16-day Open-Meteo deterministic forecasts, 6-month ECMWF SEAS5 outlooks, 25-year NASA GPM IMERG V07 rainfall, and NASA POWER auxiliary soil indicators are labeled separately and never mixed or misrepresented as IMERG observations.
-- **Bilingual Support:** Primary documentation and technical endpoints are documented in English, while supporting both **Portuguese (Angola, `lang="pt"` default)** and **English (`lang="en"`)** in `POST /api/v1/advisory`.
+- **Bilingual Support:** Primary documentation and technical endpoints are documented in English, while supporting both **Portuguese (Angola, `lang="pt"` default)** and **English (`lang="en"`)** across `/api/v1/advisory`, `/api/v1/evaluate`, `/api/v1/crops`, `/api/v1/baseline/{provincia}`, `/api/v1/optimal-planting`, `/api/v1/map-overview`, and `/zonas/{zona}/decisao`.
 
 ---
 
@@ -64,18 +64,22 @@ tests/                       # Automated pytest suite (API, baseline, decision, 
 
 ## Complete API Reference
 
-For full request/response schemas, error handling, frontend UI/UX badge mapping rules, and live `curl` / `fetch` examples across all **17 endpoints**, see **[API_DOCS.md](API_DOCS.md)**.
+For full request/response schemas, error handling, frontend UI/UX badge mapping rules, and live `curl` / `fetch` examples across all endpoints, see **[API_DOCS.md](API_DOCS.md)**.
+
+- **Live API (Render):** `https://detetive-da-chuva.onrender.com`
+- **Live Web App (Netlify):** `https://agrokairos.netlify.app` (consolidated repo: <https://github.com/marizetp/detetive-de-chuva>)
 
 ### Quick Endpoint Summary
 
 | Group | Endpoint | Purpose |
 |---|---|---|
 | **Compliance & Health** | `GET /`, `GET /health`, `GET /compliance`, `GET /fontes/saude` | Service health, SHA-256 integrity, NASA open-data attribution, AI usage disclosure |
-| **Catalog Metadata** | `GET /api/v1/provinces`, `GET /api/v1/crops` | Active provinces (`Huambo`, `Bié`, `Huíla`) & 5 crops (`Milho`, `Feijão`, `Soja`, `Mandioca`, `Arroz`) |
-| **Date-Specific Advisory** | `POST /api/v1/advisory`, `POST /api/v1/evaluate` | Deterministic evaluation + optional PT/EN RAG advisory narrative |
-| **Historical Baseline** | `GET /api/v1/baseline/{provincia}` | 25-year NASA POWER monthly percentiles, weekly curves, Mann-Kendall trends |
-| **Optimal Planting Window** | `GET /api/v1/optimal-planting`, `GET /zonas/{zona}/epoca-plantio` | Recommended crop sowing window, Wilson IC90 probability, 26-week curve & 6m outlook |
-| **IMERG Motor (Sec. 7)** | `GET /zonas`, `/decisao`, `/curva-risco`, `/falsa-partida`, `/indicadores`, `/previsao` | Official `ciclo_diario.py v0.3.0` outputs, IC90 risk curve, dry-day breakdown & 16-day forecast |
+| **Catalog Metadata** | `GET /api/v1/provinces`, `GET /api/v1/crops` (`?lang=`), `GET /api/v1/municipalities` (`?provincia=`) | Active provinces (`Huambo`, `Bié`, `Huíla`), 5 crops (`Milho`, `Feijão`, `Soja`, `Mandioca`, `Arroz`) & **33 Central Plateau municipalities** |
+| **Interactive Map & Sync** | `GET /api/v1/map-overview` | Deterministic provincial/municipal readiness (`FAVORAVEL`, `AGUARDAR`, `DESFAVORAVEL`) synchronized with the cycle view |
+| **Date-Specific Advisory** | `POST /api/v1/advisory`, `POST /api/v1/evaluate` | Deterministic evaluation + optional PT/EN RAG advisory narrative (both support `lang: "pt" \| "en"`) |
+| **Historical Baseline** | `GET /api/v1/baseline/{provincia}` (`?lang=`) | 25-year NASA POWER monthly percentiles, 52-week curves, Mann-Kendall trends |
+| **Optimal Planting & Cycle** | `GET /api/v1/optimal-planting`, `GET /zonas/{zona}/epoca-plantio` | Recommended sowing window, Wilson IC90 probability, 52-week (`ciclo_anual_52s`) & 12-month (`ciclo_mensal_12m`) cycle, `avaliacao_atual`, & 6m outlook |
+| **IMERG Motor (Sec. 7)** | `GET /zonas`, `/decisao` (`?lang=`), `/curva-risco`, `/falsa-partida`, `/indicadores`, `/previsao` | Official `ciclo_diario.py v0.3.0` outputs, IC90 risk curve, dry-day breakdown & 16-day forecast |
 
 ---
 
